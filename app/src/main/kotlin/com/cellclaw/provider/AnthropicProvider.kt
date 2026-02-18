@@ -11,7 +11,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.BufferedReader
+
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -76,79 +76,94 @@ class AnthropicProvider @Inject constructor() : Provider {
         var stopReason = StopReason.END_TURN
 
         try {
-            reader.processSSE { event, data ->
-                when (event) {
-                    "content_block_start" -> {
-                        val block = json.parseToJsonElement(data).jsonObject
-                        val contentBlock = block["content_block"]?.jsonObject ?: return@processSSE
-                        when (contentBlock["type"]?.jsonPrimitive?.content) {
-                            "tool_use" -> {
-                                // Flush any accumulated text
-                                if (currentText.isNotEmpty()) {
-                                    contentBlocks.add(ContentBlock.Text(currentText.toString()))
-                                    currentText = StringBuilder()
+            var sseEvent = ""
+            var sseData = StringBuilder()
+
+            while (true) {
+                val line = reader.readLine() ?: break
+
+                when {
+                    line.startsWith("event: ") -> sseEvent = line.removePrefix("event: ").trim()
+                    line.startsWith("data: ") -> sseData.append(line.removePrefix("data: "))
+                    line.isBlank() -> {
+                        if (sseEvent.isNotEmpty() && sseData.isNotEmpty()) {
+                            val data = sseData.toString()
+                            when (sseEvent) {
+                                "content_block_start" -> {
+                                    val block = json.parseToJsonElement(data).jsonObject
+                                    val cb = block["content_block"]?.jsonObject
+                                    if (cb != null && cb["type"]?.jsonPrimitive?.content == "tool_use") {
+                                        if (currentText.isNotEmpty()) {
+                                            contentBlocks.add(ContentBlock.Text(currentText.toString()))
+                                            currentText = StringBuilder()
+                                        }
+                                        currentToolId = cb["id"]?.jsonPrimitive?.content ?: ""
+                                        currentToolName = cb["name"]?.jsonPrimitive?.content ?: ""
+                                        currentToolInput = StringBuilder()
+                                        emit(StreamEvent.ToolUseStart(currentToolId, currentToolName))
+                                    }
                                 }
-                                currentToolId = contentBlock["id"]?.jsonPrimitive?.content ?: ""
-                                currentToolName = contentBlock["name"]?.jsonPrimitive?.content ?: ""
-                                currentToolInput = StringBuilder()
-                                emit(StreamEvent.ToolUseStart(currentToolId, currentToolName))
+                                "content_block_delta" -> {
+                                    val block = json.parseToJsonElement(data).jsonObject
+                                    val delta = block["delta"]?.jsonObject
+                                    if (delta != null) {
+                                        when (delta["type"]?.jsonPrimitive?.content) {
+                                            "text_delta" -> {
+                                                val text = delta["text"]?.jsonPrimitive?.content ?: ""
+                                                currentText.append(text)
+                                                emit(StreamEvent.TextDelta(text))
+                                            }
+                                            "input_json_delta" -> {
+                                                val partial = delta["partial_json"]?.jsonPrimitive?.content ?: ""
+                                                currentToolInput.append(partial)
+                                                emit(StreamEvent.ToolUseInputDelta(partial))
+                                            }
+                                        }
+                                    }
+                                }
+                                "content_block_stop" -> {
+                                    if (currentToolName.isNotEmpty()) {
+                                        val inputJson = try {
+                                            json.parseToJsonElement(currentToolInput.toString()).jsonObject
+                                        } catch (_: Exception) {
+                                            JsonObject(emptyMap())
+                                        }
+                                        contentBlocks.add(
+                                            ContentBlock.ToolUse(currentToolId, currentToolName, inputJson)
+                                        )
+                                        currentToolId = ""
+                                        currentToolName = ""
+                                        currentToolInput = StringBuilder()
+                                    }
+                                }
+                                "message_delta" -> {
+                                    val block = json.parseToJsonElement(data).jsonObject
+                                    val delta = block["delta"]?.jsonObject
+                                    val reason = delta?.get("stop_reason")?.jsonPrimitive?.content
+                                    stopReason = when (reason) {
+                                        "tool_use" -> StopReason.TOOL_USE
+                                        "max_tokens" -> StopReason.MAX_TOKENS
+                                        else -> StopReason.END_TURN
+                                    }
+                                }
+                                "message_stop" -> {
+                                    if (currentText.isNotEmpty()) {
+                                        contentBlocks.add(ContentBlock.Text(currentText.toString()))
+                                    }
+                                    emit(StreamEvent.Complete(
+                                        CompletionResponse(contentBlocks, stopReason)
+                                    ))
+                                }
+                                "error" -> {
+                                    val block = json.parseToJsonElement(data).jsonObject
+                                    val error = block["error"]?.jsonObject
+                                    val message = error?.get("message")?.jsonPrimitive?.content ?: data
+                                    emit(StreamEvent.Error(message))
+                                }
                             }
                         }
-                    }
-                    "content_block_delta" -> {
-                        val block = json.parseToJsonElement(data).jsonObject
-                        val delta = block["delta"]?.jsonObject ?: return@processSSE
-                        when (delta["type"]?.jsonPrimitive?.content) {
-                            "text_delta" -> {
-                                val text = delta["text"]?.jsonPrimitive?.content ?: ""
-                                currentText.append(text)
-                                emit(StreamEvent.TextDelta(text))
-                            }
-                            "input_json_delta" -> {
-                                val partial = delta["partial_json"]?.jsonPrimitive?.content ?: ""
-                                currentToolInput.append(partial)
-                                emit(StreamEvent.ToolUseInputDelta(partial))
-                            }
-                        }
-                    }
-                    "content_block_stop" -> {
-                        if (currentToolName.isNotEmpty()) {
-                            val inputJson = try {
-                                json.parseToJsonElement(currentToolInput.toString()).jsonObject
-                            } catch (_: Exception) {
-                                JsonObject(emptyMap())
-                            }
-                            contentBlocks.add(
-                                ContentBlock.ToolUse(currentToolId, currentToolName, inputJson)
-                            )
-                            currentToolId = ""
-                            currentToolName = ""
-                            currentToolInput = StringBuilder()
-                        }
-                    }
-                    "message_delta" -> {
-                        val block = json.parseToJsonElement(data).jsonObject
-                        val delta = block["delta"]?.jsonObject
-                        val reason = delta?.get("stop_reason")?.jsonPrimitive?.content
-                        stopReason = when (reason) {
-                            "tool_use" -> StopReason.TOOL_USE
-                            "max_tokens" -> StopReason.MAX_TOKENS
-                            else -> StopReason.END_TURN
-                        }
-                    }
-                    "message_stop" -> {
-                        if (currentText.isNotEmpty()) {
-                            contentBlocks.add(ContentBlock.Text(currentText.toString()))
-                        }
-                        emit(StreamEvent.Complete(
-                            CompletionResponse(contentBlocks, stopReason)
-                        ))
-                    }
-                    "error" -> {
-                        val block = json.parseToJsonElement(data).jsonObject
-                        val error = block["error"]?.jsonObject
-                        val message = error?.get("message")?.jsonPrimitive?.content ?: data
-                        emit(StreamEvent.Error(message))
+                        sseEvent = ""
+                        sseData = StringBuilder()
                     }
                 }
             }
@@ -276,29 +291,6 @@ class AnthropicProvider @Inject constructor() : Provider {
         }
 
         return CompletionResponse(blocks, stopReason, usage)
-    }
-
-    private inline fun BufferedReader.processSSE(handler: (event: String, data: String) -> Unit) {
-        var currentEvent = ""
-        var currentData = StringBuilder()
-
-        forEachLine { line ->
-            when {
-                line.startsWith("event: ") -> {
-                    currentEvent = line.removePrefix("event: ").trim()
-                }
-                line.startsWith("data: ") -> {
-                    currentData.append(line.removePrefix("data: "))
-                }
-                line.isBlank() -> {
-                    if (currentEvent.isNotEmpty() && currentData.isNotEmpty()) {
-                        handler(currentEvent, currentData.toString())
-                    }
-                    currentEvent = ""
-                    currentData = StringBuilder()
-                }
-            }
-        }
     }
 
     companion object {

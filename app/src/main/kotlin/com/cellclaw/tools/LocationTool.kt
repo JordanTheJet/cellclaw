@@ -33,7 +33,7 @@ class LocationTool @Inject constructor(
             val client = LocationServices.getFusedLocationProviderClient(context)
             val cancellationToken = CancellationTokenSource()
 
-            val location = suspendCancellableCoroutine { cont ->
+            val location = suspendCancellableCoroutine<android.location.Location?> { cont ->
                 client.getCurrentLocation(
                     Priority.PRIORITY_HIGH_ACCURACY,
                     cancellationToken.token
@@ -45,17 +45,20 @@ class LocationTool @Inject constructor(
                 cont.invokeOnCancellation { cancellationToken.cancel() }
             } ?: return ToolResult.error("Could not get location")
 
+            val lat = location.latitude
+            val lon = location.longitude
+
             val result = buildJsonObject {
-                put("latitude", location.latitude)
-                put("longitude", location.longitude)
+                put("latitude", lat)
+                put("longitude", lon)
                 put("accuracy_meters", location.accuracy.toDouble())
-                location.altitude.let { put("altitude", it) }
+                put("altitude", location.altitude)
 
                 if (geocode) {
                     try {
                         @Suppress("DEPRECATION")
                         val geocoder = Geocoder(context, Locale.getDefault())
-                        val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                        val addresses = geocoder.getFromLocation(lat, lon, 1)
                         addresses?.firstOrNull()?.let { addr ->
                             put("address", buildJsonObject {
                                 put("street", addr.getAddressLine(0) ?: "")

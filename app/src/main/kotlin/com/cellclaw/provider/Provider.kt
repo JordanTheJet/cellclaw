@@ -18,7 +18,6 @@ interface Provider {
     fun stream(request: CompletionRequest): Flow<StreamEvent>
 }
 
-@Serializable
 data class CompletionRequest(
     val systemPrompt: String,
     val messages: List<Message>,
