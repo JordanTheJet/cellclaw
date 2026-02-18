@@ -1,0 +1,80 @@
+package com.cellclaw.ui
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.cellclaw.config.AppConfig
+import com.cellclaw.service.CellClawService
+import com.cellclaw.ui.screens.*
+import com.cellclaw.ui.theme.CellClawTheme
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var appConfig: AppConfig
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        setContent {
+            CellClawTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val navController = rememberNavController()
+                    val startDest = if (appConfig.isSetupComplete) "chat" else "setup"
+
+                    NavHost(navController = navController, startDestination = startDest) {
+                        composable("setup") {
+                            SetupScreen(
+                                onComplete = {
+                                    appConfig.isSetupComplete = true
+                                    startService()
+                                    navController.navigate("chat") {
+                                        popUpTo("setup") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
+                        composable("chat") {
+                            ChatScreen(
+                                onNavigateToSettings = { navController.navigate("settings") },
+                                onNavigateToSkills = { navController.navigate("skills") },
+                                onNavigateToApprovals = { navController.navigate("approvals") }
+                            )
+                        }
+                        composable("settings") {
+                            SettingsScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("skills") {
+                            SkillsScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("approvals") {
+                            ApprovalScreen(onBack = { navController.popBackStack() })
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun startService() {
+        val intent = Intent(this, CellClawService::class.java).apply {
+            action = CellClawService.ACTION_START
+        }
+        startForegroundService(intent)
+    }
+}

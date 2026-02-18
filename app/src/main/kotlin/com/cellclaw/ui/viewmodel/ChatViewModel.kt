@@ -1,0 +1,104 @@
+package com.cellclaw.ui.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.cellclaw.agent.AgentEvent
+import com.cellclaw.agent.AgentLoop
+import com.cellclaw.agent.AgentState
+import com.cellclaw.approval.ApprovalQueue
+import com.cellclaw.approval.ApprovalRequest
+import com.cellclaw.config.AppConfig
+import com.cellclaw.config.SecureKeyStore
+import com.cellclaw.provider.AnthropicProvider
+import com.cellclaw.ui.screens.ChatMessage
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@HiltViewModel
+class ChatViewModel @Inject constructor(
+    private val agentLoop: AgentLoop,
+    private val approvalQueue: ApprovalQueue,
+    private val appConfig: AppConfig,
+    private val secureKeyStore: SecureKeyStore,
+    private val anthropicProvider: AnthropicProvider
+) : ViewModel() {
+
+    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
+
+    private val _agentState = MutableStateFlow("idle")
+    val agentState: StateFlow<String> = _agentState.asStateFlow()
+
+    val pendingApprovals: StateFlow<List<ApprovalRequest>> = approvalQueue.requests
+
+    private var messageCounter = 0L
+
+    init {
+        configureProvider()
+        observeAgentEvents()
+        observeAgentState()
+    }
+
+    private fun configureProvider() {
+        val apiKey = secureKeyStore.getApiKey("anthropic") ?: return
+        anthropicProvider.configure(apiKey, appConfig.model)
+    }
+
+    private fun observeAgentEvents() {
+        viewModelScope.launch {
+            agentLoop.events.collect { event ->
+                when (event) {
+                    is AgentEvent.UserMessage -> addMessage("user", event.text)
+                    is AgentEvent.AssistantText -> addMessage("assistant", event.text)
+                    is AgentEvent.ToolCallStart -> addMessage(
+                        "tool", "Calling ${event.name}...",
+                        toolName = event.name
+                    )
+                    is AgentEvent.ToolCallResult -> addMessage(
+                        "tool",
+                        if (event.result.success) "Done" else "Error: ${event.result.error}",
+                        toolName = event.name
+                    )
+                    is AgentEvent.ToolCallDenied -> addMessage(
+                        "tool", "Denied by user",
+                        toolName = event.name
+                    )
+                    is AgentEvent.Error -> addMessage("error", event.message)
+                }
+            }
+        }
+    }
+
+    private fun observeAgentState() {
+        viewModelScope.launch {
+            agentLoop.state.collect { state ->
+                _agentState.value = when (state) {
+                    AgentState.IDLE -> "idle"
+                    AgentState.THINKING -> "thinking"
+                    AgentState.EXECUTING_TOOLS -> "executing_tools"
+                    AgentState.WAITING_APPROVAL -> "waiting_approval"
+                    AgentState.PAUSED -> "paused"
+                    AgentState.ERROR -> "error"
+                }
+            }
+        }
+    }
+
+    fun sendMessage(text: String) {
+        agentLoop.submitMessage(text)
+    }
+
+    private fun addMessage(role: String, content: String, toolName: String? = null) {
+        messageCounter++
+        _messages.value = _messages.value + ChatMessage(
+            id = messageCounter,
+            role = role,
+            content = content,
+            toolName = toolName
+        )
+    }
+}
