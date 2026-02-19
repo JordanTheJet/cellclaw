@@ -86,6 +86,59 @@ class GeminiIntegrationTest {
     }
 
     @Test
+    fun completionWithBrowserSearch() = runTest {
+        val request = CompletionRequest(
+            systemPrompt = "You are CellClaw, an AI assistant on an Android phone. Use the browser.search tool when the user wants to search the web. Always use tools when available.",
+            messages = listOf(
+                Message.user("Search for best date spot in Boston")
+            ),
+            tools = listOf(
+                com.cellclaw.tools.ToolApiDefinition(
+                    name = "browser.search",
+                    description = "Perform a web search using the default browser.",
+                    inputSchema = com.cellclaw.tools.ToolParameters(
+                        properties = mapOf(
+                            "query" to com.cellclaw.tools.ParameterProperty("string", "Search query")
+                        ),
+                        required = listOf("query")
+                    )
+                ),
+                com.cellclaw.tools.ToolApiDefinition(
+                    name = "browser.open",
+                    description = "Open a URL in the device's default browser.",
+                    inputSchema = com.cellclaw.tools.ToolParameters(
+                        properties = mapOf(
+                            "url" to com.cellclaw.tools.ParameterProperty("string", "URL to open")
+                        ),
+                        required = listOf("url")
+                    )
+                )
+            ),
+            maxTokens = 1024
+        )
+
+        val response = provider.complete(request)
+        assertNotNull(response)
+        assertTrue("Should have content", response.content.isNotEmpty())
+
+        val toolUses = response.content.filterIsInstance<ContentBlock.ToolUse>()
+        assertTrue("Should use browser tool", toolUses.isNotEmpty())
+        assertEquals(StopReason.TOOL_USE, response.stopReason)
+
+        val searchCall = toolUses.first()
+        assertTrue("Tool should be browser.search or browser.open",
+            searchCall.name.contains("browser"))
+
+        if (searchCall.name == "browser.search") {
+            val query = searchCall.input["query"]?.jsonPrimitive?.content ?: ""
+            assertTrue("Query should mention boston",
+                query.lowercase().contains("boston"))
+            assertTrue("Query should mention date",
+                query.lowercase().contains("date"))
+        }
+    }
+
+    @Test
     fun streamCompletion() = runTest {
         val request = CompletionRequest(
             systemPrompt = "Be brief.",
