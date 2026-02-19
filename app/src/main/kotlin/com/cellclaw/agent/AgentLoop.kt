@@ -7,6 +7,7 @@ import com.cellclaw.approval.ApprovalResult
 import com.cellclaw.config.Identity
 import com.cellclaw.memory.ConversationStore
 import com.cellclaw.provider.*
+import com.cellclaw.provider.ProviderManager
 import com.cellclaw.tools.ToolRegistry
 import com.cellclaw.tools.ToolResult
 import kotlinx.coroutines.*
@@ -18,7 +19,7 @@ import javax.inject.Singleton
 
 @Singleton
 class AgentLoop @Inject constructor(
-    private val provider: AnthropicProvider,
+    private val providerManager: ProviderManager,
     private val toolRegistry: ToolRegistry,
     private val approvalQueue: ApprovalQueue,
     private val conversationStore: ConversationStore,
@@ -86,7 +87,7 @@ class AgentLoop @Inject constructor(
                 maxTokens = 4096
             )
 
-            val response = provider.complete(request)
+            val response = providerManager.activeProvider().complete(request)
 
             // Process response content
             val textParts = mutableListOf<String>()

@@ -5,9 +5,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cellclaw.agent.ToolApprovalPolicy
@@ -19,11 +27,12 @@ fun SettingsScreen(
     onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val activeProvider by viewModel.activeProvider.collectAsState()
+    val providers by viewModel.providers.collectAsState()
     val model by viewModel.model.collectAsState()
     val userName by viewModel.userName.collectAsState()
     val autoStartOnBoot by viewModel.autoStartOnBoot.collectAsState()
     val policies by viewModel.policies.collectAsState()
-    val hasApiKey by viewModel.hasApiKey.collectAsState()
 
     Scaffold(
         topBar = {
@@ -49,24 +58,75 @@ fun SettingsScreen(
             Text("AI Provider", style = MaterialTheme.typography.titleMedium)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("API Key")
-                        Text(
-                            if (hasApiKey) "Configured" else "Not set",
-                            color = if (hasApiKey) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.error
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
+                    for (provider in providers) {
+                        val isActive = activeProvider == provider.type
 
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    provider.displayName,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    if (provider.hasKey) "API key configured"
+                                    else "No API key",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (provider.hasKey)
+                                        MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.error
+                                )
+                            }
+                            Row {
+                                if (isActive) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        "Active",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                }
+                                RadioButton(
+                                    selected = isActive,
+                                    onClick = {
+                                        if (provider.hasKey) {
+                                            viewModel.switchProvider(provider.type)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        if (isActive || !provider.hasKey) {
+                            ApiKeyInput(
+                                providerType = provider.type,
+                                hasKey = provider.hasKey,
+                                onSave = { key -> viewModel.saveApiKey(provider.type, key) },
+                                onRemove = { viewModel.removeApiKey(provider.type) }
+                            )
+                        }
+
+                        if (provider != providers.last()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                    }
+                }
+            }
+
+            // Model section
+            Text("Model", style = MaterialTheme.typography.titleMedium)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     var modelInput by remember { mutableStateOf(model) }
                     OutlinedTextField(
                         value = modelInput,
                         onValueChange = { modelInput = it },
-                        label = { Text("Model") },
+                        label = { Text("Model name") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -138,6 +198,66 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApiKeyInput(
+    providerType: String,
+    hasKey: Boolean,
+    onSave: (String) -> Unit,
+    onRemove: () -> Unit
+) {
+    var newKey by remember { mutableStateOf("") }
+    var showKey by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(!hasKey) }
+
+    if (editing || !hasKey) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = newKey,
+                onValueChange = { newKey = it },
+                label = { Text("API Key") },
+                leadingIcon = { Icon(Icons.Default.Key, null) },
+                trailingIcon = {
+                    IconButton(onClick = { showKey = !showKey }) {
+                        Icon(
+                            if (showKey) Icons.Default.VisibilityOff
+                            else Icons.Default.Visibility,
+                            "Toggle"
+                        )
+                    }
+                },
+                visualTransformation = if (showKey) VisualTransformation.None
+                else PasswordVisualTransformation(),
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+            if (newKey.length >= 10) {
+                IconButton(onClick = {
+                    onSave(newKey)
+                    newKey = ""
+                    editing = false
+                }) {
+                    Icon(Icons.Default.Check, "Save", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = { editing = true }) {
+                Text("Change Key")
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Delete, "Remove", tint = MaterialTheme.colorScheme.error)
             }
         }
     }

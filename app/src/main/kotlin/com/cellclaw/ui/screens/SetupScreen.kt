@@ -1,7 +1,10 @@
 package com.cellclaw.ui.screens
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Key
@@ -24,6 +27,7 @@ fun SetupScreen(
     onComplete: () -> Unit,
     viewModel: SetupViewModel = hiltViewModel()
 ) {
+    val selectedProvider by viewModel.selectedProvider.collectAsState()
     var apiKey by remember { mutableStateOf("") }
     var userName by remember { mutableStateOf("") }
     var showApiKey by remember { mutableStateOf(false) }
@@ -42,7 +46,6 @@ fun SetupScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Step indicator
             LinearProgressIndicator(
                 progress = { (currentStep + 1) / 3f },
                 modifier = Modifier.fillMaxWidth()
@@ -51,18 +54,84 @@ fun SetupScreen(
             when (currentStep) {
                 0 -> {
                     Text(
-                        "Set up your AI provider",
+                        "Choose your AI provider",
                         style = MaterialTheme.typography.headlineMedium
                     )
                     Text(
-                        "CellClaw uses cloud AI to process your requests. Enter your Anthropic API key to get started.",
+                        "CellClaw supports multiple AI providers. Pick one and enter your API key.",
                         style = MaterialTheme.typography.bodyLarge
                     )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Provider selection cards
+                    for (provider in viewModel.availableProviders) {
+                        val isSelected = selectedProvider == provider.type
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.selectProvider(provider.type)
+                                    apiKey = ""
+                                }
+                                .then(
+                                    if (isSelected) Modifier.border(
+                                        2.dp,
+                                        MaterialTheme.colorScheme.primary,
+                                        RoundedCornerShape(12.dp)
+                                    ) else Modifier
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        provider.displayName,
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(
+                                        "Default model: ${provider.defaultModel}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (isSelected) {
+                                    RadioButton(selected = true, onClick = null)
+                                } else {
+                                    RadioButton(selected = false, onClick = {
+                                        viewModel.selectProvider(provider.type)
+                                        apiKey = ""
+                                    })
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
 
                     OutlinedTextField(
                         value = apiKey,
                         onValueChange = { apiKey = it },
-                        label = { Text("Anthropic API Key") },
+                        label = {
+                            Text(
+                                when (selectedProvider) {
+                                    "anthropic" -> "Anthropic API Key"
+                                    "openai" -> "OpenAI API Key"
+                                    "gemini" -> "Google AI API Key"
+                                    else -> "API Key"
+                                }
+                            )
+                        },
                         leadingIcon = { Icon(Icons.Default.Key, null) },
                         trailingIcon = {
                             IconButton(onClick = { showApiKey = !showApiKey }) {
@@ -74,18 +143,32 @@ fun SetupScreen(
                             }
                         },
                         visualTransformation = if (showApiKey) VisualTransformation.None
-                            else PasswordVisualTransformation(),
+                        else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
 
+                    val keyHint = when (selectedProvider) {
+                        "anthropic" -> "Starts with sk-ant-"
+                        "openai" -> "Starts with sk-"
+                        "gemini" -> "Starts with AIza"
+                        else -> ""
+                    }
+                    if (keyHint.isNotEmpty()) {
+                        Text(
+                            keyHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     Button(
                         onClick = {
-                            viewModel.saveApiKey(apiKey)
+                            viewModel.saveApiKey(selectedProvider, apiKey)
                             currentStep = 1
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = apiKey.startsWith("sk-")
+                        enabled = apiKey.length >= 10
                     ) {
                         Text("Continue")
                     }

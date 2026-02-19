@@ -6,6 +6,8 @@ import com.cellclaw.memory.MemoryDb
 import com.cellclaw.memory.MemoryFactDao
 import com.cellclaw.memory.MessageDao
 import com.cellclaw.provider.AnthropicProvider
+import com.cellclaw.provider.GeminiProvider
+import com.cellclaw.provider.OpenAIProvider
 import com.cellclaw.tools.*
 import dagger.Module
 import dagger.Provides
@@ -37,6 +39,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideAnthropicProvider(): AnthropicProvider = AnthropicProvider()
+
+    @Provides
+    @Singleton
+    fun provideOpenAIProvider(): OpenAIProvider = OpenAIProvider()
+
+    @Provides
+    @Singleton
+    fun provideGeminiProvider(): GeminiProvider = GeminiProvider()
 
     @Provides
     @Singleton
