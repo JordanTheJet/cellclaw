@@ -41,6 +41,7 @@ class AutonomyPolicy @Inject constructor() {
         setPolicy("app.launch", ToolApprovalPolicy.ASK)
         setPolicy("app.automate", ToolApprovalPolicy.ASK)
         setPolicy("script.exec", ToolApprovalPolicy.ASK)
+        setPolicy("email.send", ToolApprovalPolicy.ASK)
     }
 
     fun getPolicy(toolName: String): ToolApprovalPolicy {

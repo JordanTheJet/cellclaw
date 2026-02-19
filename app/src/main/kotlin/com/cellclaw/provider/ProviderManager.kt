@@ -48,7 +48,7 @@ class ProviderManager @Inject constructor(
             secureKeyStore.hasApiKey("anthropic")),
         ProviderInfo("openai", "OpenAI (GPT)", "gpt-4o",
             secureKeyStore.hasApiKey("openai")),
-        ProviderInfo("gemini", "Google (Gemini)", "gemini-2.0-flash",
+        ProviderInfo("gemini", "Google (Gemini)", "gemini-2.5-flash",
             secureKeyStore.hasApiKey("gemini"))
     )
 

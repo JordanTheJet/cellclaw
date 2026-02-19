@@ -207,6 +207,6 @@ class GeminiProvider @Inject constructor() : Provider {
 
     companion object {
         const val API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-        const val DEFAULT_MODEL = "gemini-2.0-flash"
+        const val DEFAULT_MODEL = "gemini-2.5-flash"
     }
 }

@@ -74,7 +74,8 @@ object AppModule {
         browserOpen: BrowserOpenTool,
         browserSearch: BrowserSearchTool,
         appLaunch: AppLaunchTool,
-        appAutomate: AppAutomateTool
+        appAutomate: AppAutomateTool,
+        emailSend: EmailSendTool
     ): ToolRegistry {
         return ToolRegistry().apply {
             register(
@@ -91,7 +92,8 @@ object AppModule {
                 sensor,
                 settings,
                 browserOpen, browserSearch,
-                appLaunch, appAutomate
+                appLaunch, appAutomate,
+                emailSend
             )
         }
     }

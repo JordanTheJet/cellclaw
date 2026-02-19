@@ -30,7 +30,7 @@ class ProviderManagerTest {
 
     @Test
     fun `gemini defaults`() {
-        assertEquals("gemini-2.0-flash", GeminiProvider.DEFAULT_MODEL)
+        assertEquals("gemini-2.5-flash", GeminiProvider.DEFAULT_MODEL)
         assertTrue(GeminiProvider.API_URL.contains("googleapis.com"))
     }
 
