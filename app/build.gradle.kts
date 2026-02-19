@@ -17,6 +17,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "com.cellclaw.test.HiltTestRunner"
     }
 
     buildTypes {
@@ -99,4 +100,9 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.1.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.53.1")
+    kspAndroidTest("com.google.dagger:hilt-android-compiler:2.53.1")
 }
