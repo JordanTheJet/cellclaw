@@ -28,6 +28,7 @@ class AutonomyPolicy @Inject constructor() {
         setPolicy("notification.send", ToolApprovalPolicy.AUTO)
         setPolicy("browser.search", ToolApprovalPolicy.AUTO)
         setPolicy("browser.open", ToolApprovalPolicy.AUTO)
+        setPolicy("screen.read", ToolApprovalPolicy.AUTO)
 
         // Write/send operations need approval
         setPolicy("sms.send", ToolApprovalPolicy.ASK)

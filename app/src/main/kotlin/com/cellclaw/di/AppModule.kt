@@ -75,6 +75,7 @@ object AppModule {
         browserSearch: BrowserSearchTool,
         appLaunch: AppLaunchTool,
         appAutomate: AppAutomateTool,
+        screenRead: ScreenReadTool,
         emailSend: EmailSendTool
     ): ToolRegistry {
         return ToolRegistry().apply {
@@ -92,7 +93,7 @@ object AppModule {
                 sensor,
                 settings,
                 browserOpen, browserSearch,
-                appLaunch, appAutomate,
+                appLaunch, appAutomate, screenRead,
                 emailSend
             )
         }

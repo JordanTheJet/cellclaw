@@ -5,7 +5,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.cellclaw.BuildConfig
 import com.cellclaw.approval.ApprovalQueue
-import com.cellclaw.approval.ApprovalResult
 import com.cellclaw.config.AppConfig
 import com.cellclaw.config.Identity
 import com.cellclaw.config.SecureKeyStore
@@ -69,7 +68,7 @@ class AgentLoopE2ETest {
         autonomyPolicy.setPolicy("browser.open", ToolApprovalPolicy.AUTO)
         autonomyPolicy.setPolicy("clipboard.write", ToolApprovalPolicy.AUTO)
         autonomyPolicy.setPolicy("clipboard.read", ToolApprovalPolicy.AUTO)
-        // email.send stays ASK — auto-approved in test
+        autonomyPolicy.setPolicy("email.send", ToolApprovalPolicy.AUTO)
 
         val conversationStore = ConversationStore(StubMessageDao())
         val semanticMemory = SemanticMemory(StubMemoryFactDao())
@@ -128,15 +127,6 @@ class AgentLoopE2ETest {
             agentLoop.events.collect { events.add(it) }
         }
 
-        // Auto-approve all approval requests
-        val approverJob = launch {
-            approvalQueue.requests.collect { requests ->
-                for (req in requests) {
-                    approvalQueue.respond(req.id, ApprovalResult.APPROVED)
-                }
-            }
-        }
-
         agentLoop.submitMessage(
             "Send an email to morepencils@gmail.com with subject 'Hello from CellClaw' " +
             "and body 'This is a live end-to-end test from the CellClaw agent loop running on a real phone!'"
@@ -150,7 +140,6 @@ class AgentLoopE2ETest {
         }
 
         collectorJob.cancel()
-        approverJob.cancel()
         logEvents("emailSendE2E")
 
         val toolCalls = events.filterIsInstance<AgentEvent.ToolCallStart>()
