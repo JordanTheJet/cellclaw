@@ -3,12 +3,18 @@ package com.cellclaw.tools
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.cellclaw.agent.UiAutomationAutomateTool
-import com.cellclaw.agent.UiAutomationScreenReadTool
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import com.cellclaw.BuildConfig
+import com.cellclaw.agent.*
+import com.cellclaw.approval.ApprovalQueue
+import com.cellclaw.config.AppConfig
+import com.cellclaw.config.Identity
+import com.cellclaw.config.SecureKeyStore
+import com.cellclaw.memory.*
+import com.cellclaw.provider.*
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -161,6 +167,120 @@ class EmailToolInstrumentedTest {
             text.contains("CellClaw Test $timestamp", ignoreCase = true)
         } ?: true
         assertTrue("Compose should be dismissed after sending", composeDismissed)
+    }
+
+    // ── Agent loop test (CellClaw sends the email via Gemini) ──
+
+    @Test
+    fun agentSendsEmail() = runBlocking {
+        assumeTrue("Gemini API key must be set", BuildConfig.GEMINI_API_KEY.isNotBlank())
+
+        // Wake screen + unlock
+        Runtime.getRuntime().exec(arrayOf("input", "keyevent", "KEYCODE_WAKEUP")).waitFor()
+        delay(500)
+        Runtime.getRuntime().exec(arrayOf("input", "swipe", "540", "2000", "540", "800", "300")).waitFor()
+        delay(1000)
+
+        // Set up agent loop with email + UI automation tools
+        val geminiProvider = GeminiProvider()
+        geminiProvider.configure(BuildConfig.GEMINI_API_KEY, "gemini-2.5-flash")
+
+        val appConfig = AppConfig(context)
+        appConfig.providerType = "gemini"
+        appConfig.model = "gemini-2.5-flash"
+
+        val secureKeyStore = SecureKeyStore(context)
+        secureKeyStore.storeApiKey("gemini", BuildConfig.GEMINI_API_KEY)
+
+        val providerManager = ProviderManager(
+            appConfig = appConfig,
+            secureKeyStore = secureKeyStore,
+            anthropicProvider = AnthropicProvider(),
+            openAIProvider = OpenAIProvider(),
+            geminiProvider = geminiProvider
+        )
+
+        val toolRegistry = ToolRegistry()
+        toolRegistry.register(
+            EmailSendTool(context),
+            UiAutomationScreenReadTool(),
+            UiAutomationAutomateTool()
+        )
+
+        val approvalQueue = ApprovalQueue()
+        val autonomyPolicy = AutonomyPolicy()
+        autonomyPolicy.setPolicy("email.send", ToolApprovalPolicy.AUTO)
+        autonomyPolicy.setPolicy("screen.read", ToolApprovalPolicy.AUTO)
+        autonomyPolicy.setPolicy("app.automate", ToolApprovalPolicy.AUTO)
+
+        val conversationStore = ConversationStore(StubMessageDao())
+        val semanticMemory = SemanticMemory(StubMemoryFactDao())
+        val identity = Identity(appConfig, semanticMemory)
+
+        val agentLoop = AgentLoop(
+            providerManager = providerManager,
+            toolRegistry = toolRegistry,
+            approvalQueue = approvalQueue,
+            conversationStore = conversationStore,
+            identity = identity,
+            autonomyPolicy = autonomyPolicy
+        )
+
+        val events = mutableListOf<AgentEvent>()
+        val collectorJob = launch {
+            agentLoop.events.collect { events.add(it) }
+        }
+
+        val timestamp = System.currentTimeMillis()
+        agentLoop.submitMessage(
+            """Send an email to morepencils@gmail.com with subject "CellClaw Agent Test $timestamp" and body "Hello from CellClaw agent!".
+Use the email.send tool to open Gmail compose.
+After it opens, use screen.read to see the Gmail compose screen.
+If you see a chooser dialog (e.g. "Send using"), tap "Gmail" then "Just once" using app.automate.
+Once you see the compose view, use app.automate to tap the "Send" button.
+Then use screen.read to confirm the compose view is dismissed."""
+        )
+
+        withTimeout(60_000) {
+            while (agentLoop.state.value != AgentState.IDLE &&
+                   agentLoop.state.value != AgentState.ERROR) {
+                delay(200)
+            }
+        }
+
+        collectorJob.cancel()
+
+        // Log all events
+        Log.d(TAG, "=== agentSendsEmail ===")
+        for (event in events) {
+            when (event) {
+                is AgentEvent.UserMessage -> Log.d(TAG, "USER: ${event.text.take(200)}")
+                is AgentEvent.AssistantText -> Log.d(TAG, "ASSISTANT: ${event.text}")
+                is AgentEvent.ToolCallStart -> Log.d(TAG, "TOOL CALL: ${event.name} params=${event.params.toString().take(500)}")
+                is AgentEvent.ToolCallResult -> Log.d(TAG, "TOOL RESULT: ${event.name} success=${event.result.success} data=${event.result.data?.toString()?.take(1000)}")
+                is AgentEvent.ToolCallDenied -> Log.d(TAG, "TOOL DENIED: ${event.name}")
+                is AgentEvent.Error -> Log.d(TAG, "ERROR: ${event.message}")
+            }
+        }
+
+        // Verify agent used email.send
+        val emailResult = events.filterIsInstance<AgentEvent.ToolCallResult>()
+            .firstOrNull { it.name == "email.send" }
+        assertNotNull("Agent should have called email.send", emailResult)
+        assertTrue("email.send should have succeeded", emailResult!!.result.success)
+
+        // Verify agent used screen.read
+        val screenReadResults = events.filterIsInstance<AgentEvent.ToolCallResult>()
+            .filter { it.name == "screen.read" }
+        assertTrue("Agent should have called screen.read", screenReadResults.isNotEmpty())
+
+        // Verify agent tapped Send
+        val tapResults = events.filterIsInstance<AgentEvent.ToolCallResult>()
+            .filter { it.name == "app.automate" }
+        assertTrue("Agent should have used app.automate", tapResults.isNotEmpty())
+
+        assertTrue("Should have assistant response",
+            events.any { it is AgentEvent.AssistantText })
     }
 
     companion object {
