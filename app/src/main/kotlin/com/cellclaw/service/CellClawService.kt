@@ -148,14 +148,10 @@ class CellClawService : Service() {
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(openIntent)
-            .addAction(0, "Stop", stopIntent)
-            .addAction(0, if (isPaused) "Resume" else "Pause", toggleAction)
-            .addAction(0, "Explain Screen", explainIntent)
-            .addAction(replyAction)
             .setOngoing(true)
             .setSilent(true)
 
-        // Approve/Deny actions in expanded area when approvals are pending
+        // Android shows max 3 action buttons — prioritize by state
         if (hasPendingApprovals) {
             val approveIntent = PendingIntent.getBroadcast(
                 this, 5,
@@ -173,7 +169,13 @@ class CellClawService : Service() {
             )
             builder.addAction(0, "Approve All", approveIntent)
             builder.addAction(0, "Deny All", denyIntent)
+            builder.addAction(0, if (isPaused) "Resume" else "Pause", toggleAction)
+        } else {
+            builder.addAction(0, "Stop", stopIntent)
+            builder.addAction(0, if (isPaused) "Resume" else "Pause", toggleAction)
+            builder.addAction(0, "Explain Screen", explainIntent)
         }
+        builder.addAction(replyAction)
 
         return builder.build()
     }
