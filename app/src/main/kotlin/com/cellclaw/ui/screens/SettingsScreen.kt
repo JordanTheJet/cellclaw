@@ -30,9 +30,12 @@ fun SettingsScreen(
     val activeProvider by viewModel.activeProvider.collectAsState()
     val providers by viewModel.providers.collectAsState()
     val model by viewModel.model.collectAsState()
+    val availableModels by viewModel.availableModels.collectAsState()
     val userName by viewModel.userName.collectAsState()
     val autoStartOnBoot by viewModel.autoStartOnBoot.collectAsState()
     val policies by viewModel.policies.collectAsState()
+    val voiceEnabled by viewModel.voiceEnabled.collectAsState()
+    val autoSpeakResponses by viewModel.autoSpeakResponses.collectAsState()
 
     Scaffold(
         topBar = {
@@ -122,17 +125,48 @@ fun SettingsScreen(
             Text("Model", style = MaterialTheme.typography.titleMedium)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    var modelInput by remember { mutableStateOf(model) }
-                    OutlinedTextField(
-                        value = modelInput,
-                        onValueChange = { modelInput = it },
-                        label = { Text("Model name") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    if (modelInput != model) {
-                        TextButton(onClick = { viewModel.setModel(modelInput) }) {
-                            Text("Save")
+                    if (availableModels.isNotEmpty()) {
+                        var expanded by remember { mutableStateOf(false) }
+                        ExposedDropdownMenuBox(
+                            expanded = expanded,
+                            onExpandedChange = { expanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = model,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Model") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                                modifier = Modifier.fillMaxWidth().menuAnchor()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+                                availableModels.forEach { modelOption ->
+                                    DropdownMenuItem(
+                                        text = { Text(modelOption) },
+                                        onClick = {
+                                            viewModel.setModel(modelOption)
+                                            expanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        var modelInput by remember { mutableStateOf(model) }
+                        OutlinedTextField(
+                            value = modelInput,
+                            onValueChange = { modelInput = it },
+                            label = { Text("Model name") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        if (modelInput != model) {
+                            TextButton(onClick = { viewModel.setModel(modelInput) }) {
+                                Text("Save")
+                            }
                         }
                     }
                 }
@@ -170,6 +204,34 @@ fun SettingsScreen(
                         Switch(
                             checked = autoStartOnBoot,
                             onCheckedChange = { viewModel.setAutoStartOnBoot(it) }
+                        )
+                    }
+                }
+            }
+
+            // Voice section
+            Text("Voice", style = MaterialTheme.typography.titleMedium)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Enable voice input")
+                        Switch(
+                            checked = voiceEnabled,
+                            onCheckedChange = { viewModel.setVoiceEnabled(it) }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Auto-speak responses")
+                        Switch(
+                            checked = autoSpeakResponses,
+                            onCheckedChange = { viewModel.setAutoSpeakResponses(it) }
                         )
                     }
                 }

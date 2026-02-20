@@ -55,6 +55,29 @@ android {
     }
 }
 
+tasks.register("enableAccessibility") {
+    description = "Enable CellClaw accessibility service via adb"
+    doLast {
+        val adb = android.adbExecutable.absolutePath
+        exec {
+            commandLine(adb, "shell", "settings", "put", "secure",
+                "enabled_accessibility_services",
+                "com.cellclaw/com.cellclaw.service.CellClawAccessibility")
+        }
+        exec {
+            commandLine(adb, "shell", "settings", "put", "secure",
+                "accessibility_enabled", "1")
+        }
+        logger.lifecycle("Accessibility service enabled for CellClaw")
+    }
+}
+
+tasks.whenTaskAdded {
+    if (name == "installDebug") {
+        finalizedBy("enableAccessibility")
+    }
+}
+
 dependencies {
     // Kotlin
     implementation(libs.kotlinx.coroutines.android)
@@ -93,6 +116,11 @@ dependencies {
 
     // Biometric
     implementation(libs.biometric)
+
+    // WorkManager
+    implementation(libs.work.runtime)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 
     // Camera
     implementation(libs.camera.core)

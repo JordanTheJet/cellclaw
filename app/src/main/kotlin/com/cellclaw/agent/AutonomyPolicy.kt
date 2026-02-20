@@ -30,6 +30,10 @@ class AutonomyPolicy @Inject constructor() {
         setPolicy("browser.open", ToolApprovalPolicy.AUTO)
         setPolicy("screen.read", ToolApprovalPolicy.AUTO)
 
+        // App control — AUTO for autonomous operation
+        setPolicy("app.launch", ToolApprovalPolicy.AUTO)
+        setPolicy("app.automate", ToolApprovalPolicy.AUTO)
+
         // Write/send operations need approval
         setPolicy("sms.send", ToolApprovalPolicy.ASK)
         setPolicy("phone.call", ToolApprovalPolicy.ASK)
@@ -39,10 +43,23 @@ class AutonomyPolicy @Inject constructor() {
         setPolicy("camera.record", ToolApprovalPolicy.ASK)
         setPolicy("clipboard.write", ToolApprovalPolicy.ASK)
         setPolicy("file.write", ToolApprovalPolicy.ASK)
-        setPolicy("app.launch", ToolApprovalPolicy.ASK)
-        setPolicy("app.automate", ToolApprovalPolicy.ASK)
         setPolicy("script.exec", ToolApprovalPolicy.ASK)
         setPolicy("email.send", ToolApprovalPolicy.ASK)
+
+        // Screenshot + Vision — safe read operations
+        setPolicy("screen.capture", ToolApprovalPolicy.AUTO)
+        setPolicy("vision.analyze", ToolApprovalPolicy.AUTO)
+
+        // Notification monitoring — safe read
+        setPolicy("notification.listen", ToolApprovalPolicy.AUTO)
+
+        // Scheduler — can create recurring tasks, needs approval
+        setPolicy("schedule.manage", ToolApprovalPolicy.ASK)
+
+        // Messaging automation
+        setPolicy("messaging.open", ToolApprovalPolicy.ASK)
+        setPolicy("messaging.read", ToolApprovalPolicy.AUTO)
+        setPolicy("messaging.reply", ToolApprovalPolicy.ASK)
     }
 
     fun getPolicy(toolName: String): ToolApprovalPolicy {

@@ -11,6 +11,7 @@ import com.cellclaw.config.AppConfig
 import com.cellclaw.config.SecureKeyStore
 import com.cellclaw.provider.AnthropicProvider
 import com.cellclaw.ui.screens.ChatMessage
+import com.cellclaw.voice.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +25,8 @@ class ChatViewModel @Inject constructor(
     private val approvalQueue: ApprovalQueue,
     private val appConfig: AppConfig,
     private val secureKeyStore: SecureKeyStore,
-    private val anthropicProvider: AnthropicProvider
+    private val anthropicProvider: AnthropicProvider,
+    private val voiceManager: VoiceManager
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -37,10 +39,17 @@ class ChatViewModel @Inject constructor(
 
     private var messageCounter = 0L
 
+    val isListening: StateFlow<Boolean> = voiceManager.isListening
+    val voiceEnabled: Boolean get() = appConfig.voiceEnabled
+
     init {
         configureProvider()
         observeAgentEvents()
         observeAgentState()
+        observeVoiceInput()
+        if (appConfig.voiceEnabled) {
+            voiceManager.initialize()
+        }
     }
 
     private fun configureProvider() {
@@ -92,6 +101,25 @@ class ChatViewModel @Inject constructor(
         agentLoop.submitMessage(text)
     }
 
+    private fun observeVoiceInput() {
+        viewModelScope.launch {
+            voiceManager.recognizedText.collect { text ->
+                if (text.isNotBlank()) {
+                    sendMessage(text)
+                }
+            }
+        }
+    }
+
+    fun startVoiceInput() {
+        if (!appConfig.voiceEnabled) return
+        voiceManager.startListening()
+    }
+
+    fun stopVoiceInput() {
+        voiceManager.stopListening()
+    }
+
     private fun addMessage(role: String, content: String, toolName: String? = null) {
         messageCounter++
         _messages.value = _messages.value + ChatMessage(
@@ -100,5 +128,14 @@ class ChatViewModel @Inject constructor(
             content = content,
             toolName = toolName
         )
+        // Auto-speak assistant responses if enabled
+        if (role == "assistant" && appConfig.autoSpeakResponses) {
+            voiceManager.speak(content)
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        voiceManager.destroy()
     }
 }

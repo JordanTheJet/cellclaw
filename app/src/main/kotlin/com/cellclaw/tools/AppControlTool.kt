@@ -30,11 +30,23 @@ class AppLaunchTool @Inject constructor(
         ?: return ToolResult.error("App not found. Provide a valid package_name or app_name.")
 
         return try {
+            // Try standard packageManager approach first
             val intent = context.packageManager.getLaunchIntentForPackage(targetPackage)
-                ?: return ToolResult.error("Cannot launch app: $targetPackage")
-
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            context.startActivity(intent)
+            if (intent != null) {
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                context.startActivity(intent)
+            } else {
+                // Fallback: use shell command (bypasses package visibility restrictions)
+                val proc = Runtime.getRuntime().exec(arrayOf(
+                    "am", "start", "-a", "android.intent.action.MAIN",
+                    "-c", "android.intent.category.LAUNCHER",
+                    "--package", targetPackage
+                ))
+                val exitCode = proc.waitFor()
+                if (exitCode != 0) {
+                    return ToolResult.error("Cannot launch app: $targetPackage (not installed or no launcher activity)")
+                }
+            }
 
             ToolResult.success(buildJsonObject {
                 put("launched", true)
@@ -46,11 +58,27 @@ class AppLaunchTool @Inject constructor(
     }
 
     private fun findPackageByName(name: String): String? {
+        // Try packageManager first
         val pm = context.packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        return apps.firstOrNull {
+        val found = apps.firstOrNull {
             pm.getApplicationLabel(it).toString().equals(name, ignoreCase = true)
         }?.packageName
+        if (found != null) return found
+
+        // Fallback: use shell pm list to find packages (bypasses visibility restrictions)
+        return try {
+            val proc = Runtime.getRuntime().exec(arrayOf("pm", "list", "packages"))
+            val output = proc.inputStream.bufferedReader().readText()
+            proc.waitFor()
+            // Search for package containing the app name (e.g. "tinder" -> "com.tinder")
+            val searchTerm = name.lowercase()
+            output.lines()
+                .map { it.removePrefix("package:").trim() }
+                .firstOrNull { it.lowercase().contains(searchTerm) }
+        } catch (e: Exception) {
+            null
+        }
     }
 }
 
@@ -76,18 +104,14 @@ Requires accessibility permission enabled in system settings."""
     override val requiresApproval = true
 
     override suspend fun execute(params: JsonObject): ToolResult {
-        if (!AccessibilityBridge.isServiceConnected) {
-            return ToolResult.error("Accessibility service not connected. Enable CellClaw in Settings > Accessibility.")
-        }
-
         val action = params["action"]?.jsonPrimitive?.content
             ?: return ToolResult.error("Missing 'action' parameter")
 
         return try {
-            val requestId = AccessibilityBridge.createRequest()
+            val (receiver, deferred) = AccessibilityBridge.createReceiver()
 
             val intent = Intent(CellClawAccessibility.ACTION_COMMAND).apply {
-                putExtra("request_id", requestId)
+                putExtra("result_receiver", receiver)
                 putExtra("action", action)
                 params["text"]?.jsonPrimitive?.contentOrNull?.let { putExtra("text", it) }
                 params["x"]?.jsonPrimitive?.intOrNull?.let { putExtra("x", it) }
@@ -97,7 +121,7 @@ Requires accessibility permission enabled in system settings."""
             }
             context.sendBroadcast(intent)
 
-            val result = AccessibilityBridge.awaitResult(requestId)
+            val result = AccessibilityBridge.awaitResult(deferred)
             val success = result["success"]?.jsonPrimitive?.booleanOrNull ?: false
 
             if (success) {
@@ -130,24 +154,21 @@ Use this to understand what's on screen before deciding what action to take."""
     override val requiresApproval = false
 
     override suspend fun execute(params: JsonObject): ToolResult {
-        if (!AccessibilityBridge.isServiceConnected) {
-            return ToolResult.error("Accessibility service not connected. Enable CellClaw in Settings > Accessibility.")
-        }
-
         return try {
-            val requestId = AccessibilityBridge.createRequest()
+            val (receiver, deferred) = AccessibilityBridge.createReceiver()
             val waitMs = params["wait_ms"]?.jsonPrimitive?.longOrNull ?: 0
 
             val action = if (waitMs > 0) "wait_and_read" else "read_screen"
             val intent = Intent(CellClawAccessibility.ACTION_COMMAND).apply {
-                putExtra("request_id", requestId)
+                putExtra("result_receiver", receiver)
                 putExtra("action", action)
                 if (waitMs > 0) putExtra("delay_ms", waitMs)
                 setPackage(context.packageName)
             }
             context.sendBroadcast(intent)
 
-            val result = AccessibilityBridge.awaitResult(requestId, timeoutMs = if (waitMs > 0) waitMs + 5000 else 10_000)
+            val timeoutMs = if (waitMs > 0) waitMs + 5000 else 10_000L
+            val result = AccessibilityBridge.awaitResult(deferred, timeoutMs)
 
             if (result.containsKey("error") && !result.containsKey("elements")) {
                 ToolResult.error(result["error"]?.jsonPrimitive?.contentOrNull ?: "Read failed")

@@ -223,6 +223,14 @@ class AnthropicProvider @Inject constructor() : Provider {
             put("content", block.content)
             if (block.isError) put("is_error", true)
         }
+        is ContentBlock.Image -> buildJsonObject {
+            put("type", "image")
+            putJsonObject("source") {
+                put("type", "base64")
+                put("media_type", block.mediaType)
+                put("data", block.base64Data)
+            }
+        }
     }
 
     private fun toolToJson(tool: ToolApiDefinition): JsonObject = buildJsonObject {
@@ -300,4 +308,4 @@ class AnthropicProvider @Inject constructor() : Provider {
     }
 }
 
-class ProviderException(message: String) : Exception(message)
+class ProviderException(message: String, cause: Throwable? = null) : Exception(message, cause)

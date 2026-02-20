@@ -28,6 +28,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Start foreground service to maintain network access when backgrounded
+        if (appConfig.isSetupComplete) {
+            startService()
+        }
+
         setContent {
             CellClawTheme {
                 Surface(

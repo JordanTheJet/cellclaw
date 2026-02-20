@@ -37,6 +37,9 @@ object AppModule {
     fun provideMemoryFactDao(db: MemoryDb): MemoryFactDao = db.memoryFactDao()
 
     @Provides
+    fun provideScheduledTaskDao(db: MemoryDb): com.cellclaw.scheduler.ScheduledTaskDao = db.scheduledTaskDao()
+
+    @Provides
     @Singleton
     fun provideAnthropicProvider(): AnthropicProvider = AnthropicProvider()
 
@@ -76,7 +79,14 @@ object AppModule {
         appLaunch: AppLaunchTool,
         appAutomate: AppAutomateTool,
         screenRead: ScreenReadTool,
-        emailSend: EmailSendTool
+        emailSend: EmailSendTool,
+        screenCapture: ScreenCaptureTool,
+        visionAnalyze: VisionAnalyzeTool,
+        notificationListen: NotificationListenTool,
+        schedulerTool: SchedulerTool,
+        messagingOpen: MessagingOpenTool,
+        messagingRead: MessagingReadTool,
+        messagingReply: MessagingReplyTool
     ): ToolRegistry {
         return ToolRegistry().apply {
             register(
@@ -94,7 +104,11 @@ object AppModule {
                 settings,
                 browserOpen, browserSearch,
                 appLaunch, appAutomate, screenRead,
-                emailSend
+                emailSend,
+                screenCapture, visionAnalyze,
+                notificationListen,
+                schedulerTool,
+                messagingOpen, messagingRead, messagingReply
             )
         }
     }

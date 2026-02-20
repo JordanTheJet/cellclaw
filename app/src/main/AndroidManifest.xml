@@ -54,6 +54,13 @@
     <!-- Sensors -->
     <uses-permission android:name="android.permission.BODY_SENSORS" />
 
+    <!-- Voice -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Package visibility (needed to launch any app by package name on Android 11+) -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
@@ -82,10 +89,11 @@
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 
-        <!-- Accessibility Service -->
+        <!-- Accessibility Service (separate process so it survives instrumentation restarts) -->
         <service
             android:name=".service.CellClawAccessibility"
             android:exported="true"
+            android:process=":a11y"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -94,6 +102,28 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_config" />
         </service>
+
+        <!-- Notification Listener Service -->
+        <service
+            android:name=".service.CellClawNotificationListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Disable default WorkManager initializer (we use Hilt) -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
 
         <!-- Broadcast Receivers -->
         <receiver

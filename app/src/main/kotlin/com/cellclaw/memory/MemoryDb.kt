@@ -1,15 +1,18 @@
 package com.cellclaw.memory
 
 import androidx.room.*
+import com.cellclaw.scheduler.ScheduledTaskDao
+import com.cellclaw.scheduler.ScheduledTaskEntity
 
 @Database(
-    entities = [MessageEntity::class, MemoryFactEntity::class],
-    version = 1,
+    entities = [MessageEntity::class, MemoryFactEntity::class, ScheduledTaskEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class MemoryDb : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun memoryFactDao(): MemoryFactDao
+    abstract fun scheduledTaskDao(): ScheduledTaskDao
 }
 
 @Entity(tableName = "messages")

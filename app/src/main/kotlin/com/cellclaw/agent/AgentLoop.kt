@@ -50,7 +50,8 @@ class AgentLoop @Inject constructor(
             } catch (e: CancellationException) {
                 _state.value = AgentState.IDLE
             } catch (e: Exception) {
-                Log.e(TAG, "Agent loop error", e)
+                Log.e(TAG, "Agent loop error: ${e::class.simpleName}: ${e.message}")
+                Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
                 _state.value = AgentState.ERROR
                 _events.emit(AgentEvent.Error(e.message ?: "Unknown error"))
             }
@@ -75,7 +76,7 @@ class AgentLoop @Inject constructor(
 
     private suspend fun runAgentLoop() {
         var iterations = 0
-        val maxIterations = 20
+        val maxIterations = 40
 
         while (iterations < maxIterations && _state.value == AgentState.THINKING) {
             iterations++
@@ -96,8 +97,10 @@ class AgentLoop @Inject constructor(
             for (block in response.content) {
                 when (block) {
                     is ContentBlock.Text -> {
-                        textParts.add(block.text)
-                        _events.emit(AgentEvent.AssistantText(block.text))
+                        if (!block.thought) {
+                            textParts.add(block.text)
+                            _events.emit(AgentEvent.AssistantText(block.text))
+                        }
                     }
                     is ContentBlock.ToolUse -> toolCalls.add(block)
                     else -> {}

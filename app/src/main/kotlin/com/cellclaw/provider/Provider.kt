@@ -48,13 +48,18 @@ enum class Role {
 @Serializable
 sealed class ContentBlock {
     @Serializable
-    data class Text(val text: String) : ContentBlock()
+    data class Text(
+        val text: String,
+        val thoughtSignature: String? = null,
+        val thought: Boolean = false
+    ) : ContentBlock()
 
     @Serializable
     data class ToolUse(
         val id: String,
         val name: String,
-        val input: JsonObject
+        val input: JsonObject,
+        val thoughtSignature: String? = null
     ) : ContentBlock()
 
     @Serializable
@@ -62,6 +67,12 @@ sealed class ContentBlock {
         val toolUseId: String,
         val content: String,
         val isError: Boolean = false
+    ) : ContentBlock()
+
+    @Serializable
+    data class Image(
+        val base64Data: String,
+        val mediaType: String = "image/png"
     ) : ContentBlock()
 }
 

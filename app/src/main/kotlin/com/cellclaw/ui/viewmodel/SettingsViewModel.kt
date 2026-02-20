@@ -37,6 +37,18 @@ class SettingsViewModel @Inject constructor(
     private val _policies = MutableStateFlow(autonomyPolicy.allPolicies())
     val policies: StateFlow<Map<String, ToolApprovalPolicy>> = _policies.asStateFlow()
 
+    private val _voiceEnabled = MutableStateFlow(appConfig.voiceEnabled)
+    val voiceEnabled: StateFlow<Boolean> = _voiceEnabled.asStateFlow()
+
+    private val _autoSpeakResponses = MutableStateFlow(appConfig.autoSpeakResponses)
+    val autoSpeakResponses: StateFlow<Boolean> = _autoSpeakResponses.asStateFlow()
+
+    private val _availableModels = MutableStateFlow(modelsForProvider(_activeProvider.value))
+    val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+
+    private fun modelsForProvider(type: String): List<String> =
+        providerManager.availableProviders().find { it.type == type }?.models ?: emptyList()
+
     fun switchProvider(type: String) {
         providerManager.switchProvider(type)
         _activeProvider.value = type
@@ -48,6 +60,7 @@ class SettingsViewModel @Inject constructor(
             _model.value = defaultModel
         }
         _providers.value = providerManager.availableProviders()
+        _availableModels.value = modelsForProvider(type)
     }
 
     fun saveApiKey(providerType: String, apiKey: String) {
@@ -73,6 +86,16 @@ class SettingsViewModel @Inject constructor(
     fun setAutoStartOnBoot(enabled: Boolean) {
         appConfig.autoStartOnBoot = enabled
         _autoStartOnBoot.value = enabled
+    }
+
+    fun setVoiceEnabled(enabled: Boolean) {
+        appConfig.voiceEnabled = enabled
+        _voiceEnabled.value = enabled
+    }
+
+    fun setAutoSpeakResponses(enabled: Boolean) {
+        appConfig.autoSpeakResponses = enabled
+        _autoSpeakResponses.value = enabled
     }
 
     fun togglePolicy(toolName: String) {

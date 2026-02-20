@@ -5,6 +5,7 @@
     android:accessibilityFlags="flagDefault|flagReportViewIds|flagRequestFilterKeyEvents"
     android:canPerformGestures="true"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:description="@string/app_name"
     android:notificationTimeout="100"
     android:settingsActivity="com.cellclaw.ui.MainActivity" />

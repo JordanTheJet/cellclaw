@@ -6,16 +6,21 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.ResultReceiver
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.Display
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.serialization.json.*
+import java.io.File
+import java.io.FileOutputStream
 
 class CellClawAccessibility : AccessibilityService() {
 
@@ -23,13 +28,14 @@ class CellClawAccessibility : AccessibilityService() {
     private var screenHeight = 2400
 
     private val actionReceiver = object : BroadcastReceiver() {
+        @Suppress("DEPRECATION")
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != ACTION_COMMAND) return
 
-            val requestId = intent.getStringExtra("request_id") ?: ""
+            val resultReceiver = intent.getParcelableExtra<ResultReceiver>("result_receiver")
             val action = intent.getStringExtra("action") ?: return
 
-            Log.d(TAG, "Received action: $action (requestId=$requestId)")
+            Log.d(TAG, "Received action: $action")
 
             val result = when (action) {
                 "tap" -> handleTap(
@@ -54,25 +60,31 @@ class CellClawAccessibility : AccessibilityService() {
                 }
                 "read_screen" -> readScreen()
                 "find_element" -> findElement(intent.getStringExtra("text") ?: "")
+                "screenshot" -> {
+                    handleScreenshot(resultReceiver)
+                    return // Result sent asynchronously
+                }
                 "wait_and_read" -> {
                     // Small delay then read — useful after transitions
                     android.os.Handler(mainLooper).postDelayed({
                         val r = readScreen()
-                        if (requestId.isNotBlank()) {
-                            AccessibilityBridge.postResult(requestId, r)
-                        }
+                        sendResult(resultReceiver, r)
                     }, intent.getLongExtra("delay_ms", 500))
-                    return // Don't post result immediately
+                    return // Don't send result immediately
                 }
                 else -> buildJsonObject {
                     put("error", "Unknown action: $action")
                 }
             }
 
-            if (requestId.isNotBlank()) {
-                AccessibilityBridge.postResult(requestId, result)
-            }
+            sendResult(resultReceiver, result)
         }
+    }
+
+    private fun sendResult(receiver: ResultReceiver?, result: JsonObject) {
+        receiver?.send(0, Bundle().apply {
+            putString("result", result.toString())
+        })
     }
 
     override fun onServiceConnected() {
@@ -81,7 +93,9 @@ class CellClawAccessibility : AccessibilityService() {
 
         val filter = IntentFilter(ACTION_COMMAND)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(actionReceiver, filter, RECEIVER_NOT_EXPORTED)
+            // RECEIVER_EXPORTED so broadcasts from the test process (different PID) can reach us.
+            // Safety: we only act on intents with our specific action + setPackage.
+            registerReceiver(actionReceiver, filter, RECEIVER_EXPORTED)
         } else {
             registerReceiver(actionReceiver, filter)
         }
@@ -345,6 +359,74 @@ class CellClawAccessibility : AccessibilityService() {
     private fun errorResult(message: String) = buildJsonObject {
         put("success", false)
         put("error", message)
+    }
+
+    // ── Screenshot ─────────────────────────────────────────────────────
+
+    private fun handleScreenshot(resultReceiver: ResultReceiver?) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            // API 26-29: fallback to screencap shell command
+            try {
+                val screenshotsDir = File(cacheDir, "screenshots").apply { mkdirs() }
+                val file = File(screenshotsDir, "screenshot_${System.currentTimeMillis()}.png")
+                val proc = Runtime.getRuntime().exec(arrayOf("screencap", "-p", file.absolutePath))
+                val exitCode = proc.waitFor()
+                if (exitCode == 0 && file.exists()) {
+                    sendResult(resultReceiver, buildJsonObject {
+                        put("success", true)
+                        put("file_path", file.absolutePath)
+                    })
+                } else {
+                    sendResult(resultReceiver, errorResult("screencap failed with exit code $exitCode"))
+                }
+            } catch (e: Exception) {
+                sendResult(resultReceiver, errorResult("Screenshot failed: ${e.message}"))
+            }
+            return
+        }
+
+        // API 30+: use AccessibilityService.takeScreenshot
+        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+            override fun onSuccess(result: ScreenshotResult) {
+                try {
+                    val bitmap = Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
+                    if (bitmap == null) {
+                        sendResult(resultReceiver, errorResult("Failed to create bitmap from screenshot"))
+                        result.hardwareBuffer.close()
+                        return
+                    }
+
+                    // Downscale to 540px width to keep base64 size reasonable
+                    val scale = 540f / bitmap.width
+                    val scaledWidth = 540
+                    val scaledHeight = (bitmap.height * scale).toInt()
+                    val softBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                    val scaled = Bitmap.createScaledBitmap(softBitmap, scaledWidth, scaledHeight, true)
+
+                    val screenshotsDir = File(cacheDir, "screenshots").apply { mkdirs() }
+                    val file = File(screenshotsDir, "screenshot_${System.currentTimeMillis()}.png")
+                    FileOutputStream(file).use { out ->
+                        scaled.compress(Bitmap.CompressFormat.PNG, 85, out)
+                    }
+
+                    if (scaled !== softBitmap) scaled.recycle()
+                    softBitmap.recycle()
+                    bitmap.recycle()
+                    result.hardwareBuffer.close()
+
+                    sendResult(resultReceiver, buildJsonObject {
+                        put("success", true)
+                        put("file_path", file.absolutePath)
+                    })
+                } catch (e: Exception) {
+                    sendResult(resultReceiver, errorResult("Screenshot save failed: ${e.message}"))
+                }
+            }
+
+            override fun onFailure(errorCode: Int) {
+                sendResult(resultReceiver, errorResult("Screenshot failed with error code $errorCode"))
+            }
+        })
     }
 
     companion object {

@@ -45,11 +45,14 @@ class ProviderManager @Inject constructor(
     /** Get all available provider types */
     fun availableProviders(): List<ProviderInfo> = listOf(
         ProviderInfo("anthropic", "Anthropic (Claude)", "claude-sonnet-4-20250514",
-            secureKeyStore.hasApiKey("anthropic")),
+            secureKeyStore.hasApiKey("anthropic"),
+            models = listOf("claude-sonnet-4-20250514", "claude-haiku-4-20250514", "claude-opus-4-20250514")),
         ProviderInfo("openai", "OpenAI (GPT)", "gpt-4o",
-            secureKeyStore.hasApiKey("openai")),
-        ProviderInfo("gemini", "Google (Gemini)", "gemini-2.5-flash",
-            secureKeyStore.hasApiKey("gemini"))
+            secureKeyStore.hasApiKey("openai"),
+            models = listOf("gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini")),
+        ProviderInfo("gemini", "Google (Gemini)", "gemini-3-flash-preview",
+            secureKeyStore.hasApiKey("gemini"),
+            models = listOf("gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"))
     )
 
     /** Check if a provider has an API key configured */
@@ -80,5 +83,6 @@ data class ProviderInfo(
     val type: String,
     val displayName: String,
     val defaultModel: String,
-    val hasKey: Boolean
+    val hasKey: Boolean,
+    val models: List<String> = emptyList()
 )

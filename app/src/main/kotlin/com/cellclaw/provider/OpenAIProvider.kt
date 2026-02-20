@@ -88,10 +88,30 @@ class OpenAIProvider @Inject constructor() : Provider {
             for (msg in request.messages) {
                 add(buildJsonObject {
                     put("role", msg.role.name.lowercase())
-                    // Simplified: just use text content
-                    val textContent = msg.content.filterIsInstance<ContentBlock.Text>()
-                        .joinToString("") { it.text }
-                    put("content", textContent)
+                    val hasImages = msg.content.any { it is ContentBlock.Image }
+                    if (hasImages) {
+                        putJsonArray("content") {
+                            for (block in msg.content) {
+                                when (block) {
+                                    is ContentBlock.Text -> add(buildJsonObject {
+                                        put("type", "text")
+                                        put("text", block.text)
+                                    })
+                                    is ContentBlock.Image -> add(buildJsonObject {
+                                        put("type", "image_url")
+                                        putJsonObject("image_url") {
+                                            put("url", "data:${block.mediaType};base64,${block.base64Data}")
+                                        }
+                                    })
+                                    else -> {}
+                                }
+                            }
+                        }
+                    } else {
+                        val textContent = msg.content.filterIsInstance<ContentBlock.Text>()
+                            .joinToString("") { it.text }
+                        put("content", textContent)
+                    }
                 })
             }
         }

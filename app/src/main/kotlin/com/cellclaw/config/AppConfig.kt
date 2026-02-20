@@ -40,4 +40,12 @@ class AppConfig @Inject constructor(
     var userName: String
         get() = prefs.getString("user_name", "") ?: ""
         set(value) = prefs.edit().putString("user_name", value).apply()
+
+    var voiceEnabled: Boolean
+        get() = prefs.getBoolean("voice_enabled", false)
+        set(value) = prefs.edit().putBoolean("voice_enabled", value).apply()
+
+    var autoSpeakResponses: Boolean
+        get() = prefs.getBoolean("auto_speak_responses", false)
+        set(value) = prefs.edit().putBoolean("auto_speak_responses", value).apply()
 }
