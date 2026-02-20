@@ -43,6 +43,9 @@ class SettingsViewModel @Inject constructor(
     private val _autoSpeakResponses = MutableStateFlow(appConfig.autoSpeakResponses)
     val autoSpeakResponses: StateFlow<Boolean> = _autoSpeakResponses.asStateFlow()
 
+    private val _overlayEnabled = MutableStateFlow(appConfig.overlayEnabled)
+    val overlayEnabled: StateFlow<Boolean> = _overlayEnabled.asStateFlow()
+
     private val _availableModels = MutableStateFlow(modelsForProvider(_activeProvider.value))
     val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
 
@@ -96,6 +99,11 @@ class SettingsViewModel @Inject constructor(
     fun setAutoSpeakResponses(enabled: Boolean) {
         appConfig.autoSpeakResponses = enabled
         _autoSpeakResponses.value = enabled
+    }
+
+    fun setOverlayEnabled(enabled: Boolean) {
+        appConfig.overlayEnabled = enabled
+        _overlayEnabled.value = enabled
     }
 
     fun togglePolicy(toolName: String) {

@@ -1,5 +1,8 @@
 package com.cellclaw.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -14,11 +17,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cellclaw.agent.ToolApprovalPolicy
+import com.cellclaw.service.overlay.OverlayService
 import com.cellclaw.ui.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,6 +41,8 @@ fun SettingsScreen(
     val policies by viewModel.policies.collectAsState()
     val voiceEnabled by viewModel.voiceEnabled.collectAsState()
     val autoSpeakResponses by viewModel.autoSpeakResponses.collectAsState()
+    val overlayEnabled by viewModel.overlayEnabled.collectAsState()
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -204,6 +211,57 @@ fun SettingsScreen(
                         Switch(
                             checked = autoStartOnBoot,
                             onCheckedChange = { viewModel.setAutoStartOnBoot(it) }
+                        )
+                    }
+                }
+            }
+
+            // Overlay section
+            Text("Overlay", style = MaterialTheme.typography.titleMedium)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Floating overlay")
+                            Text(
+                                "Draggable bubble for quick actions over other apps",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = overlayEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled && !Settings.canDrawOverlays(context)) {
+                                    val intent = Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                    context.startActivity(intent)
+                                } else {
+                                    viewModel.setOverlayEnabled(enabled)
+                                    if (enabled) {
+                                        context.startForegroundService(
+                                            Intent(context, OverlayService::class.java)
+                                        )
+                                    } else {
+                                        context.stopService(
+                                            Intent(context, OverlayService::class.java)
+                                        )
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    if (overlayEnabled && !Settings.canDrawOverlays(context)) {
+                        Text(
+                            "Overlay permission required. Tap the toggle to grant.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
                         )
                     }
                 }

@@ -48,4 +48,8 @@ class AppConfig @Inject constructor(
     var autoSpeakResponses: Boolean
         get() = prefs.getBoolean("auto_speak_responses", false)
         set(value) = prefs.edit().putBoolean("auto_speak_responses", value).apply()
+
+    var overlayEnabled: Boolean
+        get() = prefs.getBoolean("overlay_enabled", false)
+        set(value) = prefs.edit().putBoolean("overlay_enabled", value).apply()
 }

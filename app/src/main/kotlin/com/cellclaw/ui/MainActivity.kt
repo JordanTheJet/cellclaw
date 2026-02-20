@@ -2,6 +2,7 @@ package com.cellclaw.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,6 +15,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.cellclaw.config.AppConfig
 import com.cellclaw.service.CellClawService
+import com.cellclaw.service.overlay.OverlayService
 import com.cellclaw.ui.screens.*
 import com.cellclaw.ui.theme.CellClawTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -31,6 +33,10 @@ class MainActivity : ComponentActivity() {
         // Start foreground service to maintain network access when backgrounded
         if (appConfig.isSetupComplete) {
             startService()
+            // Start overlay if enabled and permission granted
+            if (appConfig.overlayEnabled && Settings.canDrawOverlays(this)) {
+                startForegroundService(Intent(this, OverlayService::class.java))
+            }
         }
 
         setContent {
