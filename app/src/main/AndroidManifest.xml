@@ -160,6 +160,17 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".service.receivers.NotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.cellclaw.NOTIFICATION_REPLY" />
+                <action android:name="com.cellclaw.SCREENSHOT_EXPLAIN" />
+                <action android:name="com.cellclaw.APPROVE_ALL" />
+                <action android:name="com.cellclaw.DENY_ALL" />
+            </intent-filter>
+        </receiver>
+
         <!-- File Provider for camera photos -->
         <provider
             android:name="androidx.core.content.FileProvider"
