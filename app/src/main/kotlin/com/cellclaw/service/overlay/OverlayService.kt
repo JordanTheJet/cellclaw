@@ -136,7 +136,10 @@ class OverlayService : Service() {
         }
         panel.addView(explainBtn)
 
-        // Quick Ask input
+        // Quick Ask row (input + send button)
+        val askRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
         val askInput = EditText(this).apply {
             hint = "Quick ask..."
             setHintTextColor(Color.parseColor("#888888"))
@@ -146,22 +149,42 @@ class OverlayService : Service() {
             isSingleLine = true
             imeOptions = EditorInfo.IME_ACTION_SEND
             setOnEditorActionListener { v, actionId, _ ->
-                if (actionId == EditorInfo.IME_ACTION_SEND) {
-                    val text = v.text.toString().trim()
-                    if (text.isNotEmpty()) {
-                        agentLoop.submitMessage(text)
-                        v.text = ""
-                        togglePanel()
-                    }
+                if (actionId == EditorInfo.IME_ACTION_SEND ||
+                    actionId == EditorInfo.IME_ACTION_DONE ||
+                    actionId == EditorInfo.IME_ACTION_GO) {
+                    submitQuickAsk(v as EditText)
                     true
                 } else false
             }
         }
-        val inputParams = LinearLayout.LayoutParams(
+        askRow.addView(askInput, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ))
+
+        val sendBtn = TextView(this).apply {
+            text = ">"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#6200EE"))
+                cornerRadius = dpToPx(4).toFloat()
+            }
+            background = bg
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+            setOnClickListener { submitQuickAsk(askInput) }
+        }
+        val sendLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.MATCH_PARENT
+        ).apply { marginStart = dpToPx(4) }
+        askRow.addView(sendBtn, sendLp)
+
+        val rowParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dpToPx(8) }
-        panel.addView(askInput, inputParams)
+        panel.addView(askRow, rowParams)
 
         // Approve button (hidden by default)
         approveBtn = createPanelButton("Approve All").apply {
@@ -215,6 +238,15 @@ class OverlayService : Service() {
                 cornerRadius = dpToPx(8).toFloat()
             }
             background = bg
+        }
+    }
+
+    private fun submitQuickAsk(input: EditText) {
+        val text = input.text.toString().trim()
+        if (text.isNotEmpty()) {
+            agentLoop.submitMessage(text)
+            input.text.clear()
+            togglePanel()
         }
     }
 

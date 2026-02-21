@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -24,7 +25,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.cellclaw.service.AccessibilityBridge
 import com.cellclaw.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -45,11 +45,17 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // Poll accessibility service status so the banner updates when user returns from Settings
-    var accessibilityConnected by remember { mutableStateOf(AccessibilityBridge.isServiceConnected) }
+    // Poll accessibility service status via system API (works cross-process)
+    var accessibilityConnected by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
+        val am = context.getSystemService(AccessibilityManager::class.java)
         while (true) {
-            accessibilityConnected = AccessibilityBridge.isServiceConnected
+            val enabled = am.getEnabledAccessibilityServiceList(
+                android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+            )
+            accessibilityConnected = enabled.any {
+                it.id?.contains("com.cellclaw") == true
+            }
             delay(2_000)
         }
     }

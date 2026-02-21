@@ -115,6 +115,9 @@ class AgentLoop @Inject constructor(
             }
 
             // If no tool calls, we're done
+            Log.d(TAG, "Response: stopReason=${response.stopReason}, " +
+                "toolCalls=${toolCalls.size}, blocks=${response.content.size}, " +
+                "types=${response.content.map { it::class.simpleName }}")
             if (response.stopReason != StopReason.TOOL_USE || toolCalls.isEmpty()) {
                 _state.value = AgentState.IDLE
                 return
