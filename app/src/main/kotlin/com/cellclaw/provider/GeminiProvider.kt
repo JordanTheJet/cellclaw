@@ -104,7 +104,7 @@ class GeminiProvider @Inject constructor() : Provider {
                         model = tryModel
                     }
                     confirmedModel = tryModel
-                    Log.d(TAG, "Raw response (truncated): ${respBody.take(2000)}")
+                    Log.d(TAG, "Raw response (truncated): ${respBody.take(6000)}")
                     return@withContext parseResponse(json.parseToJsonElement(respBody).jsonObject)
                 }
 
@@ -308,6 +308,10 @@ class GeminiProvider @Inject constructor() : Provider {
             finishReason == "MAX_TOKENS" -> StopReason.MAX_TOKENS
             else -> StopReason.END_TURN
         }
+
+        Log.d(TAG, "parseResponse: ${parts.size} parts, ${blocks.size} blocks, " +
+            "hasToolCalls=$hasToolCalls, finishReason=$finishReason, stopReason=$stopReason, " +
+            "types=${blocks.map { it::class.simpleName }}")
 
         return CompletionResponse(blocks, stopReason)
     }
