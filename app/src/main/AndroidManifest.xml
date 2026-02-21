@@ -103,6 +103,21 @@
                 android:resource="@xml/accessibility_config" />
         </service>
 
+        <!-- Quick Settings Tile -->
+        <service
+            android:name=".service.CellClawTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_qs_cellclaw"
+            android:label="CellClaw"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+
         <!-- Notification Listener Service -->
         <service
             android:name=".service.CellClawNotificationListener"
