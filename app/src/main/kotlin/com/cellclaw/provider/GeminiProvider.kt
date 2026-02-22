@@ -20,7 +20,6 @@ class GeminiProvider @Inject constructor() : Provider {
 
     private var apiKey: String = ""
     private var model: String = DEFAULT_MODEL
-    private var confirmedModel: String? = null  // Set when a model is verified to work
 
     /** Fallback models to try when the primary model returns 404 */
     private val fallbackModels = listOf(
@@ -43,8 +42,7 @@ class GeminiProvider @Inject constructor() : Provider {
 
     fun configure(apiKey: String, model: String = DEFAULT_MODEL) {
         this.apiKey = apiKey
-        // Use confirmed working model if available, otherwise use requested model
-        this.model = confirmedModel ?: model
+        this.model = model
     }
 
     override suspend fun complete(request: CompletionRequest): CompletionResponse =
@@ -98,24 +96,22 @@ class GeminiProvider @Inject constructor() : Provider {
                 val respBody = responseBody!!
 
                 if (resp.isSuccessful) {
-                    // If we fell back to a different model, lock it in for future calls
                     if (tryModel != model) {
-                        Log.w(TAG, "Model $model unavailable, fell back to $tryModel")
-                        model = tryModel
+                        Log.w(TAG, "Model $model unavailable, fell back to $tryModel (not locking in — may be temporary rate limit)")
                     }
-                    confirmedModel = tryModel
                     Log.d(TAG, "Raw response (truncated): ${respBody.take(6000)}")
                     return@withContext parseResponse(json.parseToJsonElement(respBody).jsonObject)
                 }
 
-                // If 404 (model not found), try next fallback
-                if (resp.code == 404) {
-                    Log.w(TAG, "Model $tryModel returned 404, trying next fallback...")
+                // If 404 (model not found) or 429 (rate limited), try next fallback
+                if (resp.code == 404 || resp.code == 429) {
+                    val reason = if (resp.code == 429) "rate limited" else "not found"
+                    Log.w(TAG, "Model $tryModel $reason (${resp.code}), trying next fallback...")
                     lastError = "Gemini API error ${resp.code}: $respBody"
                     continue
                 }
 
-                // Other errors (401, 429, 500, etc.) — don't fallback, throw immediately
+                // Other errors (401, 500, etc.) — don't fallback, throw immediately
                 Log.e(TAG, "Gemini API error ${resp.code}: ${respBody.take(2000)}")
                 throw ProviderException("Gemini API error ${resp.code}: $respBody")
             }
