@@ -1,12 +1,13 @@
 <p align="center">
   <img src="CellClaw_1.png" alt="CellClaw" width="300"/>
 </p>
-
+<p align="center">
 # CellClaw
+</p>
+**Autonomous AI assistant for Android.** CellClaw runs natively on your phone to do any task. No other hardware required.
 
-**Open-source autonomous AI agent for Android.** CellClaw runs natively on your phone and can read your screen, send messages, make calls, control apps, take photos, and more — all orchestrated by an LLM through a tool-use loop.
-
-You bring your own API key. CellClaw works with Anthropic (Claude), OpenAI (GPT), Google (Gemini), and OpenRouter.
+Built by and inspired by members of the Harvard, MIT, and Sundai.Club communities
+Additional inspiration from ZeroClaw
 
 ## What Can It Do?
 
@@ -213,3 +214,4 @@ class YourTool @Inject constructor() : Tool {
 ## License
 
 MIT
+
