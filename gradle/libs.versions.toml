@@ -18,6 +18,7 @@ work = "2.10.0"
 hilt-work = "1.2.0"
 camera = "1.4.1"
 location = "21.3.0"
+tensorflow-lite = "2.14.0"
 
 [libraries]
 # Kotlin
@@ -71,6 +72,9 @@ camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", versi
 
 # Location
 location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "location" }
+
+# TensorFlow Lite
+tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflow-lite" }
 
 # AndroidX Core
 core-ktx = { group = "androidx.core", name = "core-ktx", version = "1.15.0" }

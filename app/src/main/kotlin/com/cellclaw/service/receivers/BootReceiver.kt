@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.cellclaw.service.CellClawService
+import com.cellclaw.wakeword.WakeWordService
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -22,6 +23,15 @@ class BootReceiver : BroadcastReceiver() {
                 action = CellClawService.ACTION_START
             }
             context.startForegroundService(serviceIntent)
+        }
+
+        val wakeWordEnabled = prefs.getBoolean("wake_word_enabled", false)
+        if (wakeWordEnabled) {
+            Log.d(TAG, "Auto-starting WakeWord service")
+            val wakeWordIntent = Intent(context, WakeWordService::class.java).apply {
+                action = WakeWordService.ACTION_START
+            }
+            context.startForegroundService(wakeWordIntent)
         }
     }
 

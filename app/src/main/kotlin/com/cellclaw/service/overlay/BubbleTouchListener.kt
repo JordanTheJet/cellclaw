@@ -1,5 +1,6 @@
 package com.cellclaw.service.overlay
 
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -10,7 +11,8 @@ class BubbleTouchListener(
     private val layoutParams: WindowManager.LayoutParams,
     private val onTap: () -> Unit,
     private val onDoubleTap: (() -> Unit)? = null,
-    private val onDrag: ((x: Int, y: Int) -> Unit)? = null
+    private val onDrag: ((x: Int, y: Int) -> Unit)? = null,
+    private val onLongPress: (() -> Unit)? = null
 ) : View.OnTouchListener {
 
     private var initialX = 0
@@ -18,8 +20,11 @@ class BubbleTouchListener(
     private var initialTouchX = 0f
     private var initialTouchY = 0f
     private var isDragging = false
+    private var longPressTriggered = false
 
     private var lastTapTime = 0L
+    private var pendingSingleTap: Runnable = Runnable {}
+    private var pendingLongPress: Runnable = Runnable {}
 
     override fun onTouch(view: View, event: MotionEvent): Boolean {
         when (event.action) {
@@ -29,6 +34,14 @@ class BubbleTouchListener(
                 initialTouchX = event.rawX
                 initialTouchY = event.rawY
                 isDragging = false
+                longPressTriggered = false
+
+                pendingLongPress = Runnable {
+                    longPressTriggered = true
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    onLongPress?.invoke()
+                }
+                view.postDelayed(pendingLongPress, LONG_PRESS_TIMEOUT)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -36,6 +49,7 @@ class BubbleTouchListener(
                 val dy = event.rawY - initialTouchY
                 if (abs(dx) > DRAG_THRESHOLD || abs(dy) > DRAG_THRESHOLD) {
                     isDragging = true
+                    view.removeCallbacks(pendingLongPress)
                 }
                 if (isDragging) {
                     layoutParams.x = initialX + dx.toInt()
@@ -46,15 +60,14 @@ class BubbleTouchListener(
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                if (!isDragging) {
+                view.removeCallbacks(pendingLongPress)
+                if (!isDragging && !longPressTriggered) {
                     val now = System.currentTimeMillis()
                     if (now - lastTapTime < DOUBLE_TAP_TIMEOUT) {
-                        // Double tap — cancel pending single tap, fire double tap
                         lastTapTime = 0
                         view.removeCallbacks(pendingSingleTap)
                         onDoubleTap?.invoke()
                     } else {
-                        // Schedule single tap with delay to wait for possible second tap
                         lastTapTime = now
                         pendingSingleTap = Runnable { onTap() }
                         view.postDelayed(pendingSingleTap, DOUBLE_TAP_TIMEOUT)
@@ -66,10 +79,9 @@ class BubbleTouchListener(
         return false
     }
 
-    private var pendingSingleTap: Runnable = Runnable {}
-
     companion object {
         private const val DRAG_THRESHOLD = 10f
         private const val DOUBLE_TAP_TIMEOUT = 300L
+        private const val LONG_PRESS_TIMEOUT = 500L
     }
 }

@@ -14,6 +14,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.cellclaw.config.AppConfig
+import com.cellclaw.provider.ProviderManager
 import com.cellclaw.service.CellClawService
 import com.cellclaw.service.overlay.OverlayService
 import com.cellclaw.ui.screens.*
@@ -25,10 +26,15 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var appConfig: AppConfig
+    @Inject lateinit var providerManager: ProviderManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Handle debug setup via adb: am start -n com.cellclaw/.ui.MainActivity
+        //   --es provider "openrouter" --es api_key "sk-or-..." --es model "google/gemini-2.5-flash"
+        intent?.let { handleSetupIntent(it) }
 
         // Start foreground service to maintain network access when backgrounded
         if (appConfig.isSetupComplete) {
@@ -38,6 +44,8 @@ class MainActivity : ComponentActivity() {
                 startForegroundService(Intent(this, OverlayService::class.java))
             }
         }
+
+        val pendingMessage = intent?.getStringExtra("message")
 
         setContent {
             CellClawTheme {
@@ -64,7 +72,8 @@ class MainActivity : ComponentActivity() {
                             ChatScreen(
                                 onNavigateToSettings = { navController.navigate("settings") },
                                 onNavigateToSkills = { navController.navigate("skills") },
-                                onNavigateToApprovals = { navController.navigate("approvals") }
+                                onNavigateToApprovals = { navController.navigate("approvals") },
+                                initialMessage = pendingMessage
                             )
                         }
                         composable("settings") {
@@ -80,6 +89,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun handleSetupIntent(intent: Intent) {
+        val provider = intent.getStringExtra("provider") ?: return
+        val apiKey = intent.getStringExtra("api_key") ?: return
+        val model = intent.getStringExtra("model")
+
+        providerManager.switchProvider(provider)
+        providerManager.setApiKey(provider, apiKey)
+        if (model != null) {
+            appConfig.model = model
+        }
+        appConfig.isSetupComplete = true
     }
 
     private fun startService() {

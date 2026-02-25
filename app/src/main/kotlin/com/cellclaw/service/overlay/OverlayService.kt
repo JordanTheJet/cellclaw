@@ -69,6 +69,12 @@ class OverlayService : Service() {
     private var overlayHidden = false
     private var restoreJob: Job? = null
 
+    // Stop button shown on long-press
+    private var stopButtonView: TextView? = null
+    private var stopBackdropView: View? = null
+    private var stopButtonVisible = false
+    private var stopDismissJob: Job? = null
+
     // Response card for showing assistant text
     private var responseCard: LinearLayout? = null
     private var responseText: TextView? = null
@@ -97,6 +103,7 @@ class OverlayService : Service() {
     override fun onDestroy() {
         serviceScope?.cancel()
         serviceScope = null
+        hideStopButton()
         bubbleView?.let { windowManager.removeView(it) }
         panelView?.let { if (panelVisible) windowManager.removeView(it) }
         backdropView?.let { if (panelVisible) windowManager.removeView(it) }
@@ -132,6 +139,10 @@ class OverlayService : Service() {
             if (panelVisible) panelView?.visibility = View.INVISIBLE
             if (panelVisible) backdropView?.visibility = View.INVISIBLE
             if (responseVisible) responseCard?.visibility = View.INVISIBLE
+            if (stopButtonVisible) {
+                stopButtonView?.visibility = View.INVISIBLE
+                stopBackdropView?.visibility = View.INVISIBLE
+            }
         }
         restoreJob = serviceScope?.launch {
             delay(durationMs)
@@ -147,6 +158,10 @@ class OverlayService : Service() {
             if (panelVisible) panelView?.visibility = View.VISIBLE
             if (panelVisible) backdropView?.visibility = View.VISIBLE
             if (responseVisible) responseCard?.visibility = View.VISIBLE
+            if (stopButtonVisible) {
+                stopButtonView?.visibility = View.VISIBLE
+                stopBackdropView?.visibility = View.VISIBLE
+            }
         }
     }
 
@@ -183,7 +198,8 @@ class OverlayService : Service() {
             windowManager, bubbleParams,
             onTap = { togglePanel() },
             onDoubleTap = { openApp() },
-            onDrag = { x, y -> updateStatusPosition(x, y) }
+            onDrag = { x, y -> updateStatusPosition(x, y) },
+            onLongPress = { showStopButton() }
         ))
 
         windowManager.addView(bubble, bubbleParams)
@@ -504,6 +520,88 @@ class OverlayService : Service() {
         }
     }
 
+    // ── Stop button (long-press) ────────────────────────────────────────
+
+    private fun showStopButton() {
+        if (stopButtonVisible) return
+        // Close panel if open
+        if (panelVisible) togglePanel()
+
+        val size = dpToPx(48)
+
+        // Backdrop to dismiss on outside tap
+        val backdrop = View(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { hideStopButton() }
+        }
+        val bdParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+        windowManager.addView(backdrop, bdParams)
+        stopBackdropView = backdrop
+
+        // Red stop button
+        val btn = TextView(this).apply {
+            text = "\u2716"  // ✖ symbol
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#D32F2F"))
+            }
+            background = bg
+            setOnClickListener { stopEverything() }
+        }
+        val btnParams = WindowManager.LayoutParams(
+            size, size,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = bubbleParams.x + dpToPx(56)
+            y = bubbleParams.y
+        }
+        windowManager.addView(btn, btnParams)
+        stopButtonView = btn
+        stopButtonVisible = true
+
+        // Auto-dismiss after 3 seconds
+        stopDismissJob?.cancel()
+        stopDismissJob = serviceScope?.launch {
+            delay(3000)
+            hideStopButton()
+        }
+    }
+
+    private fun hideStopButton() {
+        stopDismissJob?.cancel()
+        if (stopButtonVisible) {
+            stopButtonView?.let { windowManager.removeView(it) }
+            stopBackdropView?.let { windowManager.removeView(it) }
+            stopButtonView = null
+            stopBackdropView = null
+            stopButtonVisible = false
+        }
+    }
+
+    private fun stopEverything() {
+        hideStopButton()
+        // Send stop intent to CellClawService
+        val intent = Intent(this, com.cellclaw.service.CellClawService::class.java).apply {
+            action = com.cellclaw.service.CellClawService.ACTION_STOP
+        }
+        startService(intent)
+        // Also stop this overlay service
+        stopSelf()
+    }
+
     // ── Explain Screen ───────────────────────────────────────────────────
 
     private fun handleExplainScreen() {
@@ -591,6 +689,7 @@ class OverlayService : Service() {
                 Log.d(TAG, "Event: $event")
                 fadeJob?.cancel()
                 when (event) {
+                    is AgentEvent.ThinkingText -> showStatus("Thinking\u2026")
                     is AgentEvent.ToolCallStart -> showStatus("Calling ${event.name}\u2026")
                     is AgentEvent.ToolCallResult -> {
                         showStatus("Done: ${event.name}")

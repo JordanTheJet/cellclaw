@@ -36,7 +36,7 @@ class AgentLoop @Inject constructor(
     private val _state = MutableStateFlow(AgentState.IDLE)
     val state: StateFlow<AgentState> = _state.asStateFlow()
 
-    private val _events = MutableSharedFlow<AgentEvent>(replay = 0, extraBufferCapacity = 64)
+    private val _events = MutableSharedFlow<AgentEvent>(replay = 1, extraBufferCapacity = 64)
     val events: SharedFlow<AgentEvent> = _events.asSharedFlow()
 
     private val conversationHistory = mutableListOf<Message>()

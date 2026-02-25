@@ -39,6 +39,7 @@ Useful for understanding screenshots, photos, or any visual content."""
 
         return try {
             val bytes = file.readBytes()
+            file.delete()
             val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
             val mediaType = when {
                 filePath.endsWith(".png", ignoreCase = true) -> "image/png"

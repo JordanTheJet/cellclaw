@@ -128,10 +128,10 @@ Approvals show up in the chat and in the notification. You can tap **Approve**, 
 
 | Provider | Models |
 |----------|--------|
-| **Anthropic** | Claude Sonnet 4, Claude Haiku 4, Claude Opus 4 |
-| **OpenAI** | GPT-4o, GPT-4o Mini, GPT-4.1, GPT-4.1 Mini |
-| **Google** | Gemini 3 Flash, Gemini 2.5 Flash/Pro, Gemini 2.0 Flash |
-| **OpenRouter** | Any model available on OpenRouter |
+| **Anthropic** | Claude Sonnet 4.6, Claude Opus 4.6, Claude Haiku 4.5 |
+| **OpenAI** | GPT-5.2, GPT-5.2 Chat Latest, GPT-5 Mini, GPT-4.1, GPT-4.1 Mini |
+| **Google** | Gemini 3.1 Pro, Gemini 3 Flash, Gemini 2.5 Flash/Pro |
+| **OpenRouter** | Any model available on OpenRouter (Gemini, Claude, GPT, etc.) |
 
 Switch providers and models anytime in Settings.
 

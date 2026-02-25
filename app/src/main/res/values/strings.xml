@@ -4,4 +4,5 @@
     <string name="notification_channel_service">CellClaw Service</string>
     <string name="notification_channel_approvals">Approval Requests</string>
     <string name="notification_channel_alerts">Alerts</string>
+    <string name="notification_channel_wake_word">Wake Word</string>
 </resources>
