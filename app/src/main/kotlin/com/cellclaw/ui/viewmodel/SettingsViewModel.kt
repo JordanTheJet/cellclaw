@@ -2,6 +2,7 @@ package com.cellclaw.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import com.cellclaw.agent.AutonomyPolicy
+import com.cellclaw.agent.PermissionProfile
 import com.cellclaw.agent.ToolApprovalPolicy
 import com.cellclaw.config.AppConfig
 import com.cellclaw.provider.ProviderInfo
@@ -18,6 +19,12 @@ class SettingsViewModel @Inject constructor(
     private val providerManager: ProviderManager,
     private val autonomyPolicy: AutonomyPolicy
 ) : ViewModel() {
+
+    private val _permissionProfile = MutableStateFlow(
+        try { PermissionProfile.valueOf(appConfig.permissionProfile) }
+        catch (_: Exception) { PermissionProfile.FULL_AUTO }
+    )
+    val permissionProfile: StateFlow<PermissionProfile> = _permissionProfile.asStateFlow()
 
     private val _activeProvider = MutableStateFlow(providerManager.activeType())
     val activeProvider: StateFlow<String> = _activeProvider.asStateFlow()
@@ -45,6 +52,12 @@ class SettingsViewModel @Inject constructor(
 
     private val _overlayEnabled = MutableStateFlow(appConfig.overlayEnabled)
     val overlayEnabled: StateFlow<Boolean> = _overlayEnabled.asStateFlow()
+
+    private val _maxIterations = MutableStateFlow(appConfig.maxIterations)
+    val maxIterations: StateFlow<Int> = _maxIterations.asStateFlow()
+
+    private val _wakeWordEnabled = MutableStateFlow(appConfig.wakeWordEnabled)
+    val wakeWordEnabled: StateFlow<Boolean> = _wakeWordEnabled.asStateFlow()
 
     private val _availableModels = MutableStateFlow(modelsForProvider(_activeProvider.value))
     val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
@@ -104,6 +117,23 @@ class SettingsViewModel @Inject constructor(
     fun setOverlayEnabled(enabled: Boolean) {
         appConfig.overlayEnabled = enabled
         _overlayEnabled.value = enabled
+    }
+
+    fun setMaxIterations(value: Int) {
+        appConfig.maxIterations = value
+        _maxIterations.value = value
+    }
+
+    fun setWakeWordEnabled(enabled: Boolean) {
+        appConfig.wakeWordEnabled = enabled
+        _wakeWordEnabled.value = enabled
+    }
+
+    fun setPermissionProfile(profile: PermissionProfile) {
+        appConfig.permissionProfile = profile.name
+        autonomyPolicy.applyProfile(profile)
+        _permissionProfile.value = profile
+        _policies.value = autonomyPolicy.allPolicies()
     }
 
     fun togglePolicy(toolName: String) {

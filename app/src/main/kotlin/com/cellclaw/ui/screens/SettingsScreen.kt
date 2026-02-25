@@ -22,9 +22,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cellclaw.agent.PermissionProfile
 import com.cellclaw.agent.ToolApprovalPolicy
 import com.cellclaw.service.overlay.OverlayService
 import com.cellclaw.ui.viewmodel.SettingsViewModel
+import com.cellclaw.wakeword.WakeWordService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +34,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
+    val permissionProfile by viewModel.permissionProfile.collectAsState()
     val activeProvider by viewModel.activeProvider.collectAsState()
     val providers by viewModel.providers.collectAsState()
     val model by viewModel.model.collectAsState()
@@ -42,6 +45,8 @@ fun SettingsScreen(
     val voiceEnabled by viewModel.voiceEnabled.collectAsState()
     val autoSpeakResponses by viewModel.autoSpeakResponses.collectAsState()
     val overlayEnabled by viewModel.overlayEnabled.collectAsState()
+    val maxIterations by viewModel.maxIterations.collectAsState()
+    val wakeWordEnabled by viewModel.wakeWordEnabled.collectAsState()
     val context = LocalContext.current
 
     Scaffold(
@@ -199,6 +204,44 @@ fun SettingsScreen(
                 }
             }
 
+            // Agent section
+            Text("Agent", style = MaterialTheme.typography.titleMedium)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    var iterInput by remember { mutableStateOf(if (maxIterations == 0) "" else maxIterations.toString()) }
+                    Column {
+                        Text("Max iterations", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Limit how many turns the agent can take. Leave empty for unlimited.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = iterInput,
+                            onValueChange = { value ->
+                                iterInput = value.filter { it.isDigit() }
+                            },
+                            label = { Text("Max iterations") },
+                            placeholder = { Text("Unlimited") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        val parsed = iterInput.toIntOrNull() ?: 0
+                        if (parsed != maxIterations) {
+                            TextButton(onClick = { viewModel.setMaxIterations(parsed) }) {
+                                Text("Save")
+                            }
+                        }
+                    }
+                }
+            }
+
             // Service section
             Text("Service", style = MaterialTheme.typography.titleMedium)
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -295,8 +338,94 @@ fun SettingsScreen(
                 }
             }
 
+            // Wake Word section
+            Text("Wake Word", style = MaterialTheme.typography.titleMedium)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Enable wake word")
+                            Text(
+                                "Say \"CellClaw\" to activate voice commands",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = wakeWordEnabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.setWakeWordEnabled(enabled)
+                                if (enabled) {
+                                    context.startForegroundService(
+                                        Intent(context, WakeWordService::class.java).apply {
+                                            action = WakeWordService.ACTION_START
+                                        }
+                                    )
+                                } else {
+                                    context.startService(
+                                        Intent(context, WakeWordService::class.java).apply {
+                                            action = WakeWordService.ACTION_STOP
+                                        }
+                                    )
+                                }
+                            }
+                        )
+                    }
+                    if (wakeWordEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Wake word detection uses continuous microphone access and may increase battery usage.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+
+            // Permission profile
+            Text("Permission Profile", style = MaterialTheme.typography.titleMedium)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    for (profile in PermissionProfile.entries) {
+                        val isActive = permissionProfile == profile
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    profile.displayName,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    profile.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            RadioButton(
+                                selected = isActive,
+                                onClick = { viewModel.setPermissionProfile(profile) }
+                            )
+                        }
+                    }
+                }
+            }
+
             // Approval policies
             Text("Tool Approval Policies", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Fine-tune individual tools. Switching profiles above resets these.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     for ((tool, policy) in policies.entries.sortedBy { it.key }) {

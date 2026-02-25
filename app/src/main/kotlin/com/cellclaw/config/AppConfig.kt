@@ -52,4 +52,17 @@ class AppConfig @Inject constructor(
     var overlayEnabled: Boolean
         get() = prefs.getBoolean("overlay_enabled", false)
         set(value) = prefs.edit().putBoolean("overlay_enabled", value).apply()
+
+    /** Max agent loop iterations. 0 = unlimited. */
+    var maxIterations: Int
+        get() = prefs.getInt("max_iterations", 0)
+        set(value) = prefs.edit().putInt("max_iterations", value).apply()
+
+    var permissionProfile: String
+        get() = prefs.getString("permission_profile", "FULL_AUTO") ?: "FULL_AUTO"
+        set(value) = prefs.edit().putString("permission_profile", value).apply()
+
+    var wakeWordEnabled: Boolean
+        get() = prefs.getBoolean("wake_word_enabled", false)
+        set(value) = prefs.edit().putBoolean("wake_word_enabled", value).apply()
 }

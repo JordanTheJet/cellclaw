@@ -3,67 +3,90 @@ package com.cellclaw.agent
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class PermissionProfile(val displayName: String, val description: String) {
+    FULL_AUTO(
+        "Full Auto",
+        "All actions auto-approved. Zero interruptions."
+    ),
+    BALANCED(
+        "Balanced",
+        "Reads are automatic, writes and sends ask first."
+    ),
+    CAUTIOUS(
+        "Cautious",
+        "Only basic reads are automatic. Everything else asks."
+    )
+}
+
 @Singleton
 class AutonomyPolicy @Inject constructor() {
 
     private val policies = mutableMapOf<String, ToolApprovalPolicy>()
 
+    private val allTools = listOf(
+        "sms.read", "contacts.search", "calendar.query", "location.get",
+        "clipboard.read", "file.read", "file.list", "settings.get",
+        "sensor.read", "phone.log", "notification.send", "notification.listen",
+        "browser.search", "browser.open", "screen.read", "screen.capture",
+        "vision.analyze", "messaging.read",
+        "app.launch", "app.automate", "messaging.open",
+        "sms.send", "phone.call", "contacts.add", "calendar.create",
+        "camera.snap", "camera.record", "clipboard.write", "file.write",
+        "script.exec", "email.send", "messaging.reply", "schedule.manage"
+    )
+
+    private val readOps = setOf(
+        "sms.read", "contacts.search", "calendar.query", "location.get",
+        "clipboard.read", "file.read", "file.list", "settings.get",
+        "sensor.read", "phone.log", "notification.send", "notification.listen",
+        "browser.search", "browser.open", "screen.read", "screen.capture",
+        "vision.analyze", "messaging.read"
+    )
+
+    private val appControl = setOf(
+        "app.launch", "app.automate", "messaging.open"
+    )
+
+    private val basicReads = setOf(
+        "contacts.search", "calendar.query", "clipboard.read",
+        "file.read", "file.list", "settings.get", "sensor.read",
+        "browser.search", "browser.open"
+    )
+
     init {
-        // Defaults: read ops are auto, write/send ops require approval
-        setDefaults()
+        applyProfile(PermissionProfile.FULL_AUTO)
     }
 
-    private fun setDefaults() {
-        // Safe read operations
-        setPolicy("sms.read", ToolApprovalPolicy.AUTO)
-        setPolicy("contacts.search", ToolApprovalPolicy.AUTO)
-        setPolicy("calendar.query", ToolApprovalPolicy.AUTO)
-        setPolicy("location.get", ToolApprovalPolicy.AUTO)
-        setPolicy("clipboard.read", ToolApprovalPolicy.AUTO)
-        setPolicy("file.read", ToolApprovalPolicy.AUTO)
-        setPolicy("file.list", ToolApprovalPolicy.AUTO)
-        setPolicy("settings.get", ToolApprovalPolicy.AUTO)
-        setPolicy("sensor.read", ToolApprovalPolicy.AUTO)
-        setPolicy("phone.log", ToolApprovalPolicy.AUTO)
-        setPolicy("notification.send", ToolApprovalPolicy.AUTO)
-        setPolicy("browser.search", ToolApprovalPolicy.AUTO)
-        setPolicy("browser.open", ToolApprovalPolicy.AUTO)
-        setPolicy("screen.read", ToolApprovalPolicy.AUTO)
-
-        // App control — AUTO for autonomous operation
-        setPolicy("app.launch", ToolApprovalPolicy.AUTO)
-        setPolicy("app.automate", ToolApprovalPolicy.AUTO)
-
-        // Write/send operations need approval
-        setPolicy("sms.send", ToolApprovalPolicy.ASK)
-        setPolicy("phone.call", ToolApprovalPolicy.ASK)
-        setPolicy("contacts.add", ToolApprovalPolicy.ASK)
-        setPolicy("calendar.create", ToolApprovalPolicy.ASK)
-        setPolicy("camera.snap", ToolApprovalPolicy.ASK)
-        setPolicy("camera.record", ToolApprovalPolicy.ASK)
-        setPolicy("clipboard.write", ToolApprovalPolicy.ASK)
-        setPolicy("file.write", ToolApprovalPolicy.ASK)
-        setPolicy("script.exec", ToolApprovalPolicy.ASK)
-        setPolicy("email.send", ToolApprovalPolicy.ASK)
-
-        // Screenshot + Vision — safe read operations
-        setPolicy("screen.capture", ToolApprovalPolicy.AUTO)
-        setPolicy("vision.analyze", ToolApprovalPolicy.AUTO)
-
-        // Notification monitoring — safe read
-        setPolicy("notification.listen", ToolApprovalPolicy.AUTO)
-
-        // Scheduler — can create recurring tasks, needs approval
-        setPolicy("schedule.manage", ToolApprovalPolicy.ASK)
-
-        // Messaging automation
-        setPolicy("messaging.open", ToolApprovalPolicy.ASK)
-        setPolicy("messaging.read", ToolApprovalPolicy.AUTO)
-        setPolicy("messaging.reply", ToolApprovalPolicy.ASK)
+    fun applyProfile(profile: PermissionProfile) {
+        policies.clear()
+        when (profile) {
+            PermissionProfile.FULL_AUTO -> {
+                for (tool in allTools) {
+                    policies[tool] = ToolApprovalPolicy.AUTO
+                }
+            }
+            PermissionProfile.BALANCED -> {
+                for (tool in allTools) {
+                    policies[tool] = when {
+                        tool in readOps -> ToolApprovalPolicy.AUTO
+                        tool in appControl -> ToolApprovalPolicy.AUTO
+                        else -> ToolApprovalPolicy.ASK
+                    }
+                }
+            }
+            PermissionProfile.CAUTIOUS -> {
+                for (tool in allTools) {
+                    policies[tool] = when {
+                        tool in basicReads -> ToolApprovalPolicy.AUTO
+                        else -> ToolApprovalPolicy.ASK
+                    }
+                }
+            }
+        }
     }
 
     fun getPolicy(toolName: String): ToolApprovalPolicy {
-        return policies[toolName] ?: ToolApprovalPolicy.ASK
+        return policies[toolName] ?: ToolApprovalPolicy.AUTO
     }
 
     fun setPolicy(toolName: String, policy: ToolApprovalPolicy) {

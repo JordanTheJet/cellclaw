@@ -1,5 +1,11 @@
 package com.cellclaw.ui.screens
 
+import android.content.ComponentName
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
@@ -15,10 +22,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.cellclaw.agent.PermissionProfile
 import com.cellclaw.ui.viewmodel.SetupViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,6 +40,7 @@ fun SetupScreen(
     viewModel: SetupViewModel = hiltViewModel()
 ) {
     val selectedProvider by viewModel.selectedProvider.collectAsState()
+    val selectedProfile by viewModel.selectedProfile.collectAsState()
     var apiKey by remember { mutableStateOf("") }
     var userName by remember { mutableStateOf("") }
     var showApiKey by remember { mutableStateOf(false) }
@@ -47,7 +60,7 @@ fun SetupScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             LinearProgressIndicator(
-                progress = { (currentStep + 1) / 3f },
+                progress = { (currentStep + 1) / 4f },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -213,41 +226,170 @@ fun SetupScreen(
 
                 2 -> {
                     Text(
+                        "Choose autonomy level",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Text(
+                        "How much freedom should CellClaw have? You can change this anytime in Settings.",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    for (profile in PermissionProfile.entries) {
+                        val isSelected = selectedProfile == profile
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.selectProfile(profile) }
+                                .then(
+                                    if (isSelected) Modifier.border(
+                                        2.dp,
+                                        MaterialTheme.colorScheme.primary,
+                                        RoundedCornerShape(12.dp)
+                                    ) else Modifier
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        profile.displayName,
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(
+                                        profile.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (isSelected) {
+                                    RadioButton(selected = true, onClick = null)
+                                } else {
+                                    RadioButton(
+                                        selected = false,
+                                        onClick = { viewModel.selectProfile(profile) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Button(
+                        onClick = { currentStep = 3 },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Continue")
+                    }
+                }
+
+                3 -> {
+                    val context = LocalContext.current
+                    val lifecycleOwner = LocalLifecycleOwner.current
+
+                    // Re-check permissions when user returns from settings
+                    var overlayGranted by remember {
+                        mutableStateOf(Settings.canDrawOverlays(context))
+                    }
+                    var accessibilityGranted by remember {
+                        mutableStateOf(isAccessibilityEnabled(context))
+                    }
+                    var notifListenerGranted by remember {
+                        mutableStateOf(isNotificationListenerEnabled(context))
+                    }
+                    DisposableEffect(lifecycleOwner) {
+                        val observer = LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) {
+                                overlayGranted = Settings.canDrawOverlays(context)
+                                accessibilityGranted = isAccessibilityEnabled(context)
+                                notifListenerGranted = isNotificationListenerEnabled(context)
+                            }
+                        }
+                        lifecycleOwner.lifecycle.addObserver(observer)
+                        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                    }
+
+                    Text(
                         "Permissions",
                         style = MaterialTheme.typography.headlineMedium
                     )
                     Text(
-                        "CellClaw needs permissions to access phone features. You'll be prompted when each feature is first used. Sensitive actions (sending SMS, making calls, running scripts) always ask for your approval by default.",
+                        "CellClaw needs these permissions to work. Tap each one to open settings.",
                         style = MaterialTheme.typography.bodyLarge
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Default approval policies:", style = MaterialTheme.typography.titleSmall)
-                            Spacer(Modifier.height(8.dp))
-                            PolicyRow("Read SMS/Contacts/Calendar", "Auto-approve")
-                            PolicyRow("Send SMS", "Ask first")
-                            PolicyRow("Phone calls", "Ask first")
-                            PolicyRow("Run scripts", "Ask first")
-                            PolicyRow("App automation", "Ask first")
+                    // Overlay permission
+                    PermissionRow(
+                        title = "Display over other apps",
+                        description = "Required for the floating bubble overlay",
+                        granted = overlayGranted,
+                        onClick = {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                            context.startActivity(intent)
                         }
-                    }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Accessibility permission
+                    PermissionRow(
+                        title = "Accessibility service",
+                        description = "Required for screen reading and app automation",
+                        granted = accessibilityGranted,
+                        onClick = { openAccessibilitySettings(context) }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Notification listener
+                    PermissionRow(
+                        title = "Notification listener",
+                        description = "Required to read and act on notifications",
+                        granted = notifListenerGranted,
+                        onClick = {
+                            context.startActivity(
+                                Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(
-                        "You can change these anytime in Settings.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    val allGranted = overlayGranted && accessibilityGranted && notifListenerGranted
 
                     Button(
                         onClick = onComplete,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = allGranted
                     ) {
                         Text("Start CellClaw")
+                    }
+
+                    if (!allGranted) {
+                        Text(
+                            "Grant all permissions above to continue",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
                     }
                 }
             }
@@ -256,19 +398,93 @@ fun SetupScreen(
 }
 
 @Composable
-private fun PolicyRow(feature: String, policy: String) {
-    Row(
+private fun PermissionRow(
+    title: String,
+    description: String,
+    granted: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(feature, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            policy,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (policy == "Auto-approve") MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.tertiary
+            .clickable(enabled = !granted, onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (granted)
+                MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant
         )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (granted) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Granted",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                TextButton(onClick = onClick) { Text("Grant") }
+            }
+        }
     }
 }
+
+private fun openAccessibilitySettings(context: android.content.Context) {
+    val componentName = ComponentName(context, "com.cellclaw.service.CellClawAccessibility")
+
+    // Try direct detail page first (AOSP API 36+), catch if OEM doesn't support it
+    if (Build.VERSION.SDK_INT >= 36) {
+        try {
+            context.startActivity(
+                Intent("android.settings.ACCESSIBILITY_DETAIL_SETTINGS").apply {
+                    putExtra(Intent.EXTRA_COMPONENT_NAME, componentName.flattenToString())
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+            return
+        } catch (_: Exception) { /* OEM doesn't support, fall through */ }
+    }
+
+    // Fallback: generic accessibility settings
+    context.startActivity(
+        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    )
+}
+
+private fun isNotificationListenerEnabled(context: android.content.Context): Boolean {
+    val expectedComponent = ComponentName(context, "com.cellclaw.service.CellClawNotificationListener")
+    val flat = Settings.Secure.getString(
+        context.contentResolver,
+        "enabled_notification_listeners"
+    ) ?: return false
+    return flat.split(':').any {
+        ComponentName.unflattenFromString(it) == expectedComponent
+    }
+}
+
+private fun isAccessibilityEnabled(context: android.content.Context): Boolean {
+    val expectedComponent = ComponentName(context, "com.cellclaw.service.CellClawAccessibility")
+    val enabledServices = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ) ?: return false
+    return enabledServices.split(':').any {
+        ComponentName.unflattenFromString(it) == expectedComponent
+    }
+}
+

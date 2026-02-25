@@ -1,6 +1,8 @@
 package com.cellclaw.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.cellclaw.agent.AutonomyPolicy
+import com.cellclaw.agent.PermissionProfile
 import com.cellclaw.config.AppConfig
 import com.cellclaw.provider.ProviderManager
 import com.cellclaw.provider.ProviderInfo
@@ -13,11 +15,15 @@ import javax.inject.Inject
 @HiltViewModel
 class SetupViewModel @Inject constructor(
     private val appConfig: AppConfig,
-    private val providerManager: ProviderManager
+    private val providerManager: ProviderManager,
+    private val autonomyPolicy: AutonomyPolicy
 ) : ViewModel() {
 
     private val _selectedProvider = MutableStateFlow(providerManager.activeType())
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
+
+    private val _selectedProfile = MutableStateFlow(PermissionProfile.FULL_AUTO)
+    val selectedProfile: StateFlow<PermissionProfile> = _selectedProfile.asStateFlow()
 
     val availableProviders: List<ProviderInfo> = providerManager.availableProviders()
 
@@ -32,6 +38,12 @@ class SetupViewModel @Inject constructor(
 
     fun saveUserName(name: String) {
         appConfig.userName = name
+    }
+
+    fun selectProfile(profile: PermissionProfile) {
+        _selectedProfile.value = profile
+        appConfig.permissionProfile = profile.name
+        autonomyPolicy.applyProfile(profile)
     }
 
     fun defaultModel(providerType: String): String {
