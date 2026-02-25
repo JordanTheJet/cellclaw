@@ -18,16 +18,20 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import android.text.TextUtils
 import androidx.core.app.NotificationCompat
 import com.cellclaw.CellClawApp
 import com.cellclaw.R
+import com.cellclaw.agent.AgentEvent
 import com.cellclaw.agent.AgentLoop
 import com.cellclaw.agent.AgentState
 import com.cellclaw.approval.ApprovalQueue
 import com.cellclaw.approval.ApprovalResult
 import com.cellclaw.tools.ScreenCaptureTool
 import com.cellclaw.tools.VisionAnalyzeTool
+import android.util.Log
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
@@ -44,15 +48,33 @@ class OverlayService : Service() {
     @Inject lateinit var approvalQueue: ApprovalQueue
     @Inject lateinit var screenCaptureTool: ScreenCaptureTool
     @Inject lateinit var visionAnalyzeTool: VisionAnalyzeTool
+    @Inject lateinit var visibilityController: OverlayVisibilityController
 
     private lateinit var windowManager: WindowManager
     private var bubbleView: ImageView? = null
     private var panelView: LinearLayout? = null
+    private var backdropView: View? = null
     private var panelVisible = false
     private var serviceScope: CoroutineScope? = null
 
     private lateinit var bubbleParams: WindowManager.LayoutParams
     private lateinit var panelParams: WindowManager.LayoutParams
+    private lateinit var backdropParams: WindowManager.LayoutParams
+    private var statusView: TextView? = null
+    private lateinit var statusParams: WindowManager.LayoutParams
+    private var statusVisible = false
+    private var fadeJob: Job? = null
+
+    // Track whether overlay is temporarily hidden
+    private var overlayHidden = false
+    private var restoreJob: Job? = null
+
+    // Response card for showing assistant text
+    private var responseCard: LinearLayout? = null
+    private var responseText: TextView? = null
+    private lateinit var responseParams: WindowManager.LayoutParams
+    private var responseVisible = false
+    private var responseFadeJob: Job? = null
 
     // Panel child views for dynamic updates
     private var approveBtn: TextView? = null
@@ -65,8 +87,11 @@ class OverlayService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         startForeground(OVERLAY_NOTIFICATION_ID, buildOverlayNotification())
         createBubble()
+        createStatusView()
+        createResponseCard()
         createPanel()
         observeState()
+        observeVisibility()
     }
 
     override fun onDestroy() {
@@ -74,13 +99,58 @@ class OverlayService : Service() {
         serviceScope = null
         bubbleView?.let { windowManager.removeView(it) }
         panelView?.let { if (panelVisible) windowManager.removeView(it) }
+        backdropView?.let { if (panelVisible) windowManager.removeView(it) }
+        statusView?.let { if (statusVisible) windowManager.removeView(it) }
+        responseCard?.let { if (responseVisible) windowManager.removeView(it) }
         bubbleView = null
         panelView = null
+        backdropView = null
+        statusView = null
+        responseCard = null
         super.onDestroy()
     }
 
     private fun dpToPx(dp: Int): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), resources.displayMetrics).toInt()
+
+    // ── Visibility hide/show ─────────────────────────────────────────────
+
+    private fun observeVisibility() {
+        serviceScope?.launch {
+            visibilityController.hideRequests.collect { request ->
+                hideOverlayTemporarily(request.durationMs)
+            }
+        }
+    }
+
+    private fun hideOverlayTemporarily(durationMs: Long) {
+        restoreJob?.cancel()
+        if (!overlayHidden) {
+            overlayHidden = true
+            bubbleView?.visibility = View.INVISIBLE
+            if (statusVisible) statusView?.visibility = View.INVISIBLE
+            if (panelVisible) panelView?.visibility = View.INVISIBLE
+            if (panelVisible) backdropView?.visibility = View.INVISIBLE
+            if (responseVisible) responseCard?.visibility = View.INVISIBLE
+        }
+        restoreJob = serviceScope?.launch {
+            delay(durationMs)
+            restoreOverlay()
+        }
+    }
+
+    private fun restoreOverlay() {
+        if (overlayHidden) {
+            overlayHidden = false
+            bubbleView?.visibility = View.VISIBLE
+            if (statusVisible) statusView?.visibility = View.VISIBLE
+            if (panelVisible) panelView?.visibility = View.VISIBLE
+            if (panelVisible) backdropView?.visibility = View.VISIBLE
+            if (responseVisible) responseCard?.visibility = View.VISIBLE
+        }
+    }
+
+    // ── Bubble ───────────────────────────────────────────────────────────
 
     private fun createBubble() {
         val size = dpToPx(48)
@@ -100,7 +170,8 @@ class OverlayService : Service() {
         bubbleParams = WindowManager.LayoutParams(
             size, size,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -108,13 +179,167 @@ class OverlayService : Service() {
             y = dpToPx(200)
         }
 
-        bubble.setOnTouchListener(BubbleTouchListener(windowManager, bubbleParams) {
-            togglePanel()
-        })
+        bubble.setOnTouchListener(BubbleTouchListener(
+            windowManager, bubbleParams,
+            onTap = { togglePanel() },
+            onDoubleTap = { openApp() },
+            onDrag = { x, y -> updateStatusPosition(x, y) }
+        ))
 
         windowManager.addView(bubble, bubbleParams)
         bubbleView = bubble
     }
+
+    // ── Status label ─────────────────────────────────────────────────────
+
+    private fun createStatusView() {
+        val tv = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#CC1E1E2E"))
+                cornerRadius = dpToPx(12).toFloat()
+            }
+            background = bg
+        }
+
+        statusParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = bubbleParams.x + dpToPx(56)
+            y = bubbleParams.y + dpToPx(8)
+            width = dpToPx(220)
+        }
+
+        statusView = tv
+    }
+
+    private fun showStatus(text: String) {
+        statusView?.let { tv ->
+            tv.text = text
+            statusParams.x = bubbleParams.x + dpToPx(56)
+            statusParams.y = bubbleParams.y + dpToPx(8)
+            if (!statusVisible) {
+                windowManager.addView(tv, statusParams)
+                statusVisible = true
+            } else {
+                windowManager.updateViewLayout(tv, statusParams)
+            }
+            // Respect current hide state
+            if (overlayHidden) tv.visibility = View.INVISIBLE
+        }
+    }
+
+    private fun hideStatus() {
+        if (statusVisible) {
+            statusView?.let { windowManager.removeView(it) }
+            statusVisible = false
+        }
+    }
+
+    private fun updateStatusPosition(bubbleX: Int, bubbleY: Int) {
+        if (statusVisible) {
+            statusParams.x = bubbleX + dpToPx(56)
+            statusParams.y = bubbleY + dpToPx(8)
+            statusView?.let { windowManager.updateViewLayout(it, statusParams) }
+        }
+    }
+
+    // ── Response card ─────────────────────────────────────────────────────
+
+    private fun createResponseCard() {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#E61E1E2E"))
+                cornerRadius = dpToPx(12).toFloat()
+            }
+            background = bg
+            setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(10))
+        }
+
+        val label = TextView(this).apply {
+            text = "CellClaw"
+            setTextColor(Color.parseColor("#BB86FC"))
+            textSize = 11f
+        }
+        card.addView(label)
+
+        val scroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(120) // max height
+            )
+        }
+        val tv = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            maxLines = 8
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        scroll.addView(tv)
+        card.addView(scroll, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dpToPx(4) })
+
+        // Tap to dismiss
+        card.setOnClickListener { hideResponse() }
+
+        responseParams = WindowManager.LayoutParams(
+            dpToPx(260),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = bubbleParams.x + dpToPx(56)
+            y = bubbleParams.y + dpToPx(30)
+        }
+
+        responseCard = card
+        responseText = tv
+    }
+
+    private fun showResponse(text: String) {
+        responseFadeJob?.cancel()
+        responseText?.text = text
+        responseParams.x = bubbleParams.x + dpToPx(56)
+        responseParams.y = bubbleParams.y + dpToPx(30)
+        if (!responseVisible) {
+            responseCard?.let { windowManager.addView(it, responseParams) }
+            responseVisible = true
+        } else {
+            responseCard?.let { windowManager.updateViewLayout(it, responseParams) }
+        }
+        if (overlayHidden) responseCard?.visibility = View.INVISIBLE
+
+        // Auto-dismiss after 8 seconds
+        responseFadeJob = serviceScope?.launch {
+            delay(8000)
+            hideResponse()
+        }
+    }
+
+    private fun hideResponse() {
+        responseFadeJob?.cancel()
+        if (responseVisible) {
+            responseCard?.let { windowManager.removeView(it) }
+            responseVisible = false
+        }
+    }
+
+    // ── Panel ────────────────────────────────────────────────────────────
 
     private fun createPanel() {
         val panel = LinearLayout(this).apply {
@@ -126,15 +351,6 @@ class OverlayService : Service() {
             background = bg
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
         }
-
-        // "Explain Screen" button
-        val explainBtn = createPanelButton("Explain Screen").apply {
-            setOnClickListener {
-                togglePanel()
-                handleExplainScreen()
-            }
-        }
-        panel.addView(explainBtn)
 
         // Quick Ask row (input + send button)
         val askRow = LinearLayout(this).apply {
@@ -225,6 +441,20 @@ class OverlayService : Service() {
         }
 
         panelView = panel
+
+        // Fullscreen transparent backdrop to catch outside touches
+        backdropView = View(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { togglePanel() }
+        }
+        backdropParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
     }
 
     private fun createPanelButton(text: String): TextView {
@@ -241,6 +471,14 @@ class OverlayService : Service() {
         }
     }
 
+    private fun openApp() {
+        if (panelVisible) togglePanel()
+        val intent = Intent(this, com.cellclaw.ui.MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        startActivity(intent)
+    }
+
     private fun submitQuickAsk(input: EditText) {
         val text = input.text.toString().trim()
         if (text.isNotEmpty()) {
@@ -253,8 +491,11 @@ class OverlayService : Service() {
     private fun togglePanel() {
         if (panelVisible) {
             panelView?.let { windowManager.removeView(it) }
+            backdropView?.let { windowManager.removeView(it) }
             panelVisible = false
         } else {
+            // Add backdrop first (behind panel) to catch outside taps
+            backdropView?.let { windowManager.addView(it, backdropParams) }
             // Position panel next to bubble
             panelParams.x = bubbleParams.x + dpToPx(56)
             panelParams.y = bubbleParams.y
@@ -262,6 +503,8 @@ class OverlayService : Service() {
             panelVisible = true
         }
     }
+
+    // ── Explain Screen ───────────────────────────────────────────────────
 
     private fun handleExplainScreen() {
         serviceScope?.launch {
@@ -305,6 +548,8 @@ class OverlayService : Service() {
         manager.notify(EXPLAIN_NOTIFICATION_ID, notification)
     }
 
+    // ── State observation ────────────────────────────────────────────────
+
     private fun observeState() {
         serviceScope?.cancel()
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -314,9 +559,9 @@ class OverlayService : Service() {
             }.collect { (state, requests) ->
                 // Tint bubble based on state
                 val color = when (state) {
-                    AgentState.IDLE -> Color.parseColor("#6200EE")
-                    AgentState.THINKING -> Color.parseColor("#FF9800")
-                    AgentState.EXECUTING_TOOLS -> Color.parseColor("#2196F3")
+                    AgentState.IDLE -> Color.parseColor("#4CAF50")
+                    AgentState.THINKING -> Color.parseColor("#2196F3")
+                    AgentState.EXECUTING_TOOLS -> Color.parseColor("#FF9800")
                     AgentState.WAITING_APPROVAL -> Color.parseColor("#F44336")
                     AgentState.PAUSED -> Color.parseColor("#9E9E9E")
                     AgentState.ERROR -> Color.parseColor("#B00020")
@@ -330,6 +575,38 @@ class OverlayService : Service() {
                 val hasPending = requests.isNotEmpty()
                 approveBtn?.visibility = if (hasPending) View.VISIBLE else View.GONE
                 denyBtn?.visibility = if (hasPending) View.VISIBLE else View.GONE
+
+                // Auto-hide status when idle
+                if (state == AgentState.IDLE) {
+                    fadeJob?.cancel()
+                    hideStatus()
+                }
+            }
+        }
+
+        // Observe agent events for status text
+        serviceScope?.launch {
+            Log.d(TAG, "Starting event collector")
+            agentLoop.events.collect { event ->
+                Log.d(TAG, "Event: $event")
+                fadeJob?.cancel()
+                when (event) {
+                    is AgentEvent.ToolCallStart -> showStatus("Calling ${event.name}\u2026")
+                    is AgentEvent.ToolCallResult -> {
+                        showStatus("Done: ${event.name}")
+                        fadeJob = launch {
+                            delay(2000)
+                            hideStatus()
+                        }
+                    }
+                    is AgentEvent.AssistantText -> {
+                        Log.d(TAG, "AssistantText: ${event.text.take(80)}")
+                        showStatus("Responding\u2026")
+                        showResponse(event.text)
+                    }
+                    is AgentEvent.Error -> showStatus("Error: ${event.message}")
+                    else -> {}
+                }
             }
         }
     }
@@ -345,6 +622,7 @@ class OverlayService : Service() {
     }
 
     companion object {
+        private const val TAG = "OverlayService"
         const val OVERLAY_NOTIFICATION_ID = 2
         private const val EXPLAIN_NOTIFICATION_ID = 101
     }

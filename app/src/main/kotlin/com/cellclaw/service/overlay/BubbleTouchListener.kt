@@ -1,7 +1,5 @@
 package com.cellclaw.service.overlay
 
-import android.graphics.PixelFormat
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -10,7 +8,9 @@ import kotlin.math.abs
 class BubbleTouchListener(
     private val windowManager: WindowManager,
     private val layoutParams: WindowManager.LayoutParams,
-    private val onTap: () -> Unit
+    private val onTap: () -> Unit,
+    private val onDoubleTap: (() -> Unit)? = null,
+    private val onDrag: ((x: Int, y: Int) -> Unit)? = null
 ) : View.OnTouchListener {
 
     private var initialX = 0
@@ -18,6 +18,8 @@ class BubbleTouchListener(
     private var initialTouchX = 0f
     private var initialTouchY = 0f
     private var isDragging = false
+
+    private var lastTapTime = 0L
 
     override fun onTouch(view: View, event: MotionEvent): Boolean {
         when (event.action) {
@@ -39,12 +41,24 @@ class BubbleTouchListener(
                     layoutParams.x = initialX + dx.toInt()
                     layoutParams.y = initialY + dy.toInt()
                     windowManager.updateViewLayout(view, layoutParams)
+                    onDrag?.invoke(layoutParams.x, layoutParams.y)
                 }
                 return true
             }
             MotionEvent.ACTION_UP -> {
                 if (!isDragging) {
-                    onTap()
+                    val now = System.currentTimeMillis()
+                    if (now - lastTapTime < DOUBLE_TAP_TIMEOUT) {
+                        // Double tap — cancel pending single tap, fire double tap
+                        lastTapTime = 0
+                        view.removeCallbacks(pendingSingleTap)
+                        onDoubleTap?.invoke()
+                    } else {
+                        // Schedule single tap with delay to wait for possible second tap
+                        lastTapTime = now
+                        pendingSingleTap = Runnable { onTap() }
+                        view.postDelayed(pendingSingleTap, DOUBLE_TAP_TIMEOUT)
+                    }
                 }
                 return true
             }
@@ -52,7 +66,10 @@ class BubbleTouchListener(
         return false
     }
 
+    private var pendingSingleTap: Runnable = Runnable {}
+
     companion object {
-        private const val DRAG_THRESHOLD = 10f // dp-equivalent at mdpi; good enough
+        private const val DRAG_THRESHOLD = 10f
+        private const val DOUBLE_TAP_TIMEOUT = 300L
     }
 }
