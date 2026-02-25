@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="CellClaw_1.png" alt="CellClaw" width="300"/>
+</p>
+
 # CellClaw
 
 **Open-source autonomous AI agent for Android.** CellClaw runs natively on your phone and can read your screen, send messages, make calls, control apps, take photos, and more — all orchestrated by an LLM through a tool-use loop.
