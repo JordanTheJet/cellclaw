@@ -5,7 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import com.cellclaw.service.AccessibilityBridge
 import com.cellclaw.service.CellClawAccessibility
+import com.cellclaw.service.overlay.OverlayVisibilityController
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.*
 import javax.inject.Inject
 
@@ -83,7 +85,8 @@ class AppLaunchTool @Inject constructor(
 }
 
 class AppAutomateTool @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val overlayVisibility: OverlayVisibilityController
 ) : Tool {
     override val name = "app.automate"
     override val description = """Automate actions in other apps using AccessibilityService.
@@ -108,6 +111,12 @@ Requires accessibility permission enabled in system settings."""
             ?: return ToolResult.error("Missing 'action' parameter")
 
         return try {
+            // Hide overlay for tap/swipe so it doesn't interfere with gestures
+            if (action in listOf("tap", "swipe")) {
+                overlayVisibility.requestHide(500)
+                delay(100) // Wait for overlay to disappear
+            }
+
             val (receiver, deferred) = AccessibilityBridge.createReceiver()
 
             val intent = Intent(CellClawAccessibility.ACTION_COMMAND).apply {

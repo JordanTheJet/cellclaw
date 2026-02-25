@@ -5,13 +5,16 @@ import android.content.Intent
 import android.util.Base64
 import com.cellclaw.service.AccessibilityBridge
 import com.cellclaw.service.CellClawAccessibility
+import com.cellclaw.service.overlay.OverlayVisibilityController
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.*
 import java.io.File
 import javax.inject.Inject
 
 class ScreenCaptureTool @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val overlayVisibility: OverlayVisibilityController
 ) : Tool {
     override val name = "screen.capture"
     override val description = """Capture a screenshot of the current screen.
@@ -27,6 +30,10 @@ Use vision.analyze to analyze the screenshot content with AI."""
     override suspend fun execute(params: JsonObject): ToolResult {
         return try {
             val includeBase64 = params["include_base64"]?.jsonPrimitive?.booleanOrNull ?: false
+
+            // Hide overlay so it doesn't appear in the screenshot
+            overlayVisibility.requestHide(800)
+            delay(150) // Wait for overlay to disappear before capturing
 
             val (receiver, deferred) = AccessibilityBridge.createReceiver()
 
