@@ -18,7 +18,7 @@ class AppConfig @Inject constructor(
         set(value) = prefs.edit().putString("provider_type", value).apply()
 
     var model: String
-        get() = prefs.getString("model", "claude-sonnet-4-20250514") ?: "claude-sonnet-4-20250514"
+        get() = prefs.getString("model", "claude-sonnet-4-6") ?: "claude-sonnet-4-6"
         set(value) = prefs.edit().putString("model", value).apply()
 
     var maxTokens: Int

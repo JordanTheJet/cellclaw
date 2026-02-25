@@ -194,6 +194,12 @@ class AnthropicProvider @Inject constructor() : Provider {
             put("messages", messagesArray)
             if (stream) put("stream", true)
 
+            // Enable extended thinking
+            putJsonObject("thinking") {
+                put("type", "enabled")
+                put("budget_tokens", request.maxTokens.coerceAtMost(8000))
+            }
+
             if (request.tools.isNotEmpty()) {
                 putJsonArray("tools") {
                     for (tool in request.tools) {
@@ -207,9 +213,17 @@ class AnthropicProvider @Inject constructor() : Provider {
     }
 
     private fun contentBlockToJson(block: ContentBlock): JsonObject = when (block) {
-        is ContentBlock.Text -> buildJsonObject {
-            put("type", "text")
-            put("text", block.text)
+        is ContentBlock.Text -> if (block.thought) {
+            buildJsonObject {
+                put("type", "thinking")
+                put("thinking", block.text)
+                block.thoughtSignature?.let { put("signature", it) }
+            }
+        } else {
+            buildJsonObject {
+                put("type", "text")
+                put("text", block.text)
+            }
         }
         is ContentBlock.ToolUse -> buildJsonObject {
             put("type", "tool_use")
@@ -272,6 +286,11 @@ class AnthropicProvider @Inject constructor() : Provider {
         val blocks = contentArray.map { element ->
             val block = element.jsonObject
             when (block["type"]?.jsonPrimitive?.content) {
+                "thinking" -> ContentBlock.Text(
+                    text = block["thinking"]?.jsonPrimitive?.content ?: "",
+                    thoughtSignature = block["signature"]?.jsonPrimitive?.content,
+                    thought = true
+                )
                 "text" -> ContentBlock.Text(
                     block["text"]?.jsonPrimitive?.content ?: ""
                 )
@@ -303,8 +322,8 @@ class AnthropicProvider @Inject constructor() : Provider {
 
     companion object {
         const val API_URL = "https://api.anthropic.com/v1/messages"
-        const val API_VERSION = "2023-06-01"
-        const val DEFAULT_MODEL = "claude-sonnet-4-20250514"
+        const val API_VERSION = "2025-04-14"
+        const val DEFAULT_MODEL = "claude-sonnet-4-6"
     }
 }
 

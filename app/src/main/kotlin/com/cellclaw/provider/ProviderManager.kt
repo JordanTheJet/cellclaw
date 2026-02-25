@@ -16,12 +16,14 @@ class ProviderManager @Inject constructor(
     private val secureKeyStore: SecureKeyStore,
     private val anthropicProvider: AnthropicProvider,
     private val openAIProvider: OpenAIProvider,
-    private val geminiProvider: GeminiProvider
+    private val geminiProvider: GeminiProvider,
+    private val openRouterProvider: OpenRouterProvider
 ) {
     private val providers = mapOf(
         "anthropic" to anthropicProvider,
         "openai" to openAIProvider,
-        "gemini" to geminiProvider
+        "gemini" to geminiProvider,
+        "openrouter" to openRouterProvider
     )
 
     /** Get the currently active provider, configured with its API key */
@@ -44,15 +46,18 @@ class ProviderManager @Inject constructor(
 
     /** Get all available provider types */
     fun availableProviders(): List<ProviderInfo> = listOf(
-        ProviderInfo("anthropic", "Anthropic (Claude)", "claude-sonnet-4-20250514",
+        ProviderInfo("anthropic", "Anthropic (Claude)", "claude-sonnet-4-6",
             secureKeyStore.hasApiKey("anthropic"),
-            models = listOf("claude-sonnet-4-20250514", "claude-haiku-4-20250514", "claude-opus-4-20250514")),
-        ProviderInfo("openai", "OpenAI (GPT)", "gpt-4o",
+            models = listOf("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")),
+        ProviderInfo("openai", "OpenAI (GPT)", "gpt-5.2",
             secureKeyStore.hasApiKey("openai"),
-            models = listOf("gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini")),
+            models = listOf("gpt-5.2", "gpt-5.2-chat-latest", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini")),
         ProviderInfo("gemini", "Google (Gemini)", "gemini-3-flash-preview",
             secureKeyStore.hasApiKey("gemini"),
-            models = listOf("gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"))
+            models = listOf("gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-pro")),
+        ProviderInfo("openrouter", "OpenRouter", "google/gemini-2.5-flash",
+            secureKeyStore.hasApiKey("openrouter"),
+            models = listOf("google/gemini-2.5-flash", "google/gemini-2.5-pro", "anthropic/claude-sonnet-4.6", "openai/gpt-5.2"))
     )
 
     /** Check if a provider has an API key configured */
@@ -75,6 +80,7 @@ class ProviderManager @Inject constructor(
             is AnthropicProvider -> provider.configure(apiKey, model)
             is OpenAIProvider -> provider.configure(apiKey, model)
             is GeminiProvider -> provider.configure(apiKey, model)
+            is OpenRouterProvider -> provider.configure(apiKey, model)
         }
     }
 }

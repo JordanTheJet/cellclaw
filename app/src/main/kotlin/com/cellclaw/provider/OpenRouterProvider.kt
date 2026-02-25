@@ -1,6 +1,5 @@
 package com.cellclaw.provider
 
-import com.cellclaw.tools.ToolApiDefinition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -14,9 +13,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
-class OpenAIProvider @Inject constructor() : Provider {
+class OpenRouterProvider @Inject constructor() : Provider {
 
-    override val name = "openai"
+    override val name = "openrouter"
 
     private var apiKey: String = ""
     private var model: String = DEFAULT_MODEL
@@ -55,14 +54,13 @@ class OpenAIProvider @Inject constructor() : Provider {
                 ?: throw ProviderException("Empty response body")
 
             if (!response.isSuccessful) {
-                throw ProviderException("API error ${response.code}: $responseBody")
+                throw ProviderException("OpenRouter API error ${response.code}: $responseBody")
             }
 
             parseResponse(json.parseToJsonElement(responseBody).jsonObject)
         }
 
     override fun stream(request: CompletionRequest): Flow<StreamEvent> = flow {
-        // Simplified non-streaming fallback
         try {
             val response = complete(request)
             for (block in response.content) {
@@ -83,18 +81,16 @@ class OpenAIProvider @Inject constructor() : Provider {
     private fun buildRequestBody(request: CompletionRequest): String {
         toolNameMap.clear()
         val messages = buildJsonArray {
-            // System message
             add(buildJsonObject {
                 put("role", "system")
                 put("content", request.systemPrompt)
             })
-            // Conversation messages
             for (msg in request.messages) {
                 val toolResults = msg.content.filterIsInstance<ContentBlock.ToolResult>()
                 val toolCalls = msg.content.filterIsInstance<ContentBlock.ToolUse>()
 
                 if (toolResults.isNotEmpty()) {
-                    // OpenAI expects each tool result as a separate message with role: "tool"
+                    // OpenAI format: each tool result is a separate message with role: "tool"
                     for (result in toolResults) {
                         add(buildJsonObject {
                             put("role", "tool")
@@ -204,12 +200,10 @@ class OpenAIProvider @Inject constructor() : Provider {
 
         val blocks = mutableListOf<ContentBlock>()
 
-        // Text content
         message["content"]?.jsonPrimitive?.contentOrNull?.let {
             if (it.isNotBlank()) blocks.add(ContentBlock.Text(it))
         }
 
-        // Tool calls
         message["tool_calls"]?.jsonArray?.forEach { toolCallElement ->
             val toolCall = toolCallElement.jsonObject
             val function = toolCall["function"]?.jsonObject ?: return@forEach
@@ -239,7 +233,7 @@ class OpenAIProvider @Inject constructor() : Provider {
     }
 
     companion object {
-        const val API_URL = "https://api.openai.com/v1/chat/completions"
-        const val DEFAULT_MODEL = "gpt-5.2"
+        const val API_URL = "https://openrouter.ai/api/v1/chat/completions"
+        const val DEFAULT_MODEL = "google/gemini-2.5-flash"
     }
 }
