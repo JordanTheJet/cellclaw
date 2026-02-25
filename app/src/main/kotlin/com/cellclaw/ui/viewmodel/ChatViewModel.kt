@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.cellclaw.agent.AgentEvent
 import com.cellclaw.agent.AgentLoop
 import com.cellclaw.agent.AgentState
+import com.cellclaw.agent.HeartbeatResult
 import com.cellclaw.approval.ApprovalQueue
 import com.cellclaw.approval.ApprovalRequest
+import com.cellclaw.approval.ApprovalResult
 import com.cellclaw.config.AppConfig
 import com.cellclaw.config.SecureKeyStore
 import com.cellclaw.provider.AnthropicProvider
@@ -34,6 +36,9 @@ class ChatViewModel @Inject constructor(
 
     private val _agentState = MutableStateFlow("idle")
     val agentState: StateFlow<String> = _agentState.asStateFlow()
+
+    private val _thinkingText = MutableStateFlow<String?>(null)
+    val thinkingText: StateFlow<String?> = _thinkingText.asStateFlow()
 
     val pendingApprovals: StateFlow<List<ApprovalRequest>> = approvalQueue.requests
 
@@ -76,7 +81,15 @@ class ChatViewModel @Inject constructor(
                         "tool", "Denied by user",
                         toolName = event.name
                     )
+                    is AgentEvent.ThinkingText -> _thinkingText.value = event.text
                     is AgentEvent.Error -> addMessage("error", event.message)
+                    is AgentEvent.HeartbeatStart -> {} // Silent — don't show in chat
+                    is AgentEvent.HeartbeatComplete -> {
+                        val note = event.detection.statusNote
+                        if (note != null && event.detection.heartbeatResult != HeartbeatResult.OK_NOTHING_TO_DO) {
+                            addMessage("assistant", note)
+                        }
+                    }
                 }
             }
         }
@@ -93,12 +106,24 @@ class ChatViewModel @Inject constructor(
                     AgentState.PAUSED -> "paused"
                     AgentState.ERROR -> "error"
                 }
+                if (state == AgentState.IDLE || state == AgentState.ERROR) {
+                    _thinkingText.value = null
+                }
             }
         }
     }
 
     fun sendMessage(text: String) {
         agentLoop.submitMessage(text)
+    }
+
+    fun stopAgent() {
+        agentLoop.stop()
+        _thinkingText.value = null
+    }
+
+    fun respondToApproval(requestId: String, result: ApprovalResult) {
+        approvalQueue.respond(requestId, result)
     }
 
     private fun observeVoiceInput() {

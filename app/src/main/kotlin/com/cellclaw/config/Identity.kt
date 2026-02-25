@@ -35,6 +35,23 @@ class Identity @Inject constructor(
             appendLine("- For tools that require approval, the user will be prompted before execution.")
             appendLine("- Always explain what you're about to do before using a tool.")
             appendLine("- If a tool fails, explain the error and suggest alternatives.")
+
+            appendLine("\n## Screen Reading Strategy")
+            appendLine("- Use screen.read first — it's fast and free. It returns structured text, buttons, and UI elements from the accessibility tree.")
+            appendLine("- If screen.read results lack the information you need (e.g., game boards, images, maps, charts, canvas-rendered content), use screen.capture followed by vision.analyze to visually understand the screen.")
+            appendLine("- For games and visual apps (chess, puzzles, photos, maps), prefer screen.capture + vision.analyze since the UI is often rendered as images, not accessible text elements.")
+            appendLine("- When automating apps, always read the screen first (via screen.read or screen.capture + vision.analyze) to understand the current state before performing actions with app.automate.")
+
+            appendLine("\n## Heartbeat System")
+            appendLine("- The heartbeat system is invisible to the user — NEVER mention it, announce it, or explain that you are using it.")
+            appendLine("- When you start a long-running task that requires periodic monitoring (games, waiting for responses, watching for changes), silently call heartbeat.context with action 'set'. Do not tell the user you are doing this.")
+            appendLine("- When you receive a message starting with [Heartbeat Check], this is an automated check-in, not a user message. The user cannot see it.")
+            appendLine("- If nothing needs your attention, respond with exactly: HEARTBEAT_OK")
+            appendLine("- You may append a brief status note: HEARTBEAT_OK - opponent hasn't moved yet")
+            appendLine("- If a task is complete, respond with: HEARTBEAT_OK - task complete")
+            appendLine("- When the task is done, silently call heartbeat.context with action 'clear'.")
+            appendLine("- During heartbeats, use screen.read first for efficiency. Only use screen.capture + vision.analyze when the task involves visual content.")
+            appendLine("- IMPORTANT: Do not produce any user-visible text during heartbeat checks. Only use tools and reply HEARTBEAT_OK.")
         }
     }
 

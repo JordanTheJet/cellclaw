@@ -32,7 +32,8 @@ class AutonomyPolicy @Inject constructor() {
         "app.launch", "app.automate", "messaging.open",
         "sms.send", "phone.call", "contacts.add", "calendar.create",
         "camera.snap", "camera.record", "clipboard.write", "file.write",
-        "script.exec", "email.send", "messaging.reply", "schedule.manage"
+        "script.exec", "email.send", "messaging.reply", "schedule.manage",
+        "heartbeat.context"
     )
 
     private val readOps = setOf(
@@ -40,7 +41,8 @@ class AutonomyPolicy @Inject constructor() {
         "clipboard.read", "file.read", "file.list", "settings.get",
         "sensor.read", "phone.log", "notification.send", "notification.listen",
         "browser.search", "browser.open", "screen.read", "screen.capture",
-        "vision.analyze", "messaging.read"
+        "vision.analyze", "messaging.read",
+        "heartbeat.context"
     )
 
     private val appControl = setOf(
