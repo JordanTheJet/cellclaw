@@ -12,6 +12,8 @@ import com.cellclaw.CellClawApp
 import com.cellclaw.R
 import com.cellclaw.agent.AgentLoop
 import com.cellclaw.agent.AgentState
+import com.cellclaw.agent.HeartbeatManager
+import com.cellclaw.agent.HeartbeatState
 import com.cellclaw.approval.ApprovalQueue
 import com.cellclaw.service.receivers.NotificationActionReceiver
 import com.cellclaw.ui.MainActivity
@@ -25,6 +27,7 @@ class CellClawService : Service() {
 
     @Inject lateinit var agentLoop: AgentLoop
     @Inject lateinit var approvalQueue: ApprovalQueue
+    @Inject lateinit var heartbeatManager: HeartbeatManager
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var serviceScope: CoroutineScope? = null
@@ -39,11 +42,13 @@ class CellClawService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                startForeground(NOTIFICATION_ID, buildNotification("CellClaw is running", AgentState.IDLE, false))
+                startForeground(NOTIFICATION_ID, buildNotification("CellClaw is running", AgentState.IDLE, false, HeartbeatState.STOPPED, null))
                 agentLoop.loadHistory()
                 observeState()
+                heartbeatManager.start(wakeLock)
             }
             ACTION_STOP -> {
+                heartbeatManager.stop()
                 agentLoop.stop()
                 serviceScope?.cancel()
                 serviceScope = null
@@ -61,6 +66,7 @@ class CellClawService : Service() {
     }
 
     override fun onDestroy() {
+        heartbeatManager.stop()
         serviceScope?.cancel()
         serviceScope = null
         releaseWakeLock()
@@ -71,26 +77,47 @@ class CellClawService : Service() {
         serviceScope?.cancel()
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         serviceScope?.launch {
-            combine(agentLoop.state, approvalQueue.requests) { state, requests ->
-                Pair(state, requests)
-            }.collect { (state, requests) ->
-                val hasPending = requests.isNotEmpty()
-                val text = when (state) {
-                    AgentState.IDLE -> "Idle"
+            combine(
+                agentLoop.state,
+                approvalQueue.requests,
+                heartbeatManager.state,
+                heartbeatManager.activeTaskContext
+            ) { agentState, requests, heartbeatState, taskContext ->
+                StateSnapshot(agentState, requests, heartbeatState, taskContext)
+            }.collect { snapshot ->
+                val hasPending = snapshot.requests.isNotEmpty()
+                val text = when (snapshot.agentState) {
+                    AgentState.IDLE -> {
+                        when (snapshot.heartbeatState) {
+                            HeartbeatState.ACTIVE -> {
+                                val ctx = snapshot.taskContext
+                                if (ctx != null) "Monitoring: $ctx" else "Idle"
+                            }
+                            HeartbeatState.POLLING -> "Checking..."
+                            HeartbeatState.STOPPED -> "Idle"
+                        }
+                    }
                     AgentState.THINKING -> "Thinking..."
                     AgentState.EXECUTING_TOOLS -> "Executing tools..."
-                    AgentState.WAITING_APPROVAL -> "Waiting for approval (${requests.size} pending)"
+                    AgentState.WAITING_APPROVAL -> "Waiting for approval (${snapshot.requests.size} pending)"
                     AgentState.PAUSED -> "Paused"
                     AgentState.ERROR -> "Error occurred"
                 }
-                val notification = buildNotification(text, state, hasPending)
+                val notification = buildNotification(text, snapshot.agentState, hasPending, snapshot.heartbeatState, snapshot.taskContext)
                 val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
                 manager.notify(NOTIFICATION_ID, notification)
             }
         }
     }
 
-    private fun buildNotification(text: String, state: AgentState, hasPendingApprovals: Boolean): Notification {
+    private data class StateSnapshot(
+        val agentState: AgentState,
+        val requests: List<Any>,
+        val heartbeatState: HeartbeatState,
+        val taskContext: String?
+    )
+
+    private fun buildNotification(text: String, state: AgentState, hasPendingApprovals: Boolean, heartbeatState: HeartbeatState, taskContext: String?): Notification {
         val openIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
@@ -186,7 +213,7 @@ class CellClawService : Service() {
             PowerManager.PARTIAL_WAKE_LOCK,
             "CellClaw::AgentWakeLock"
         ).apply {
-            acquire(10 * 60 * 1000L) // 10 minutes max
+            acquire(HeartbeatManager.WAKE_LOCK_DURATION_MS) // 5 min, renewable by heartbeat
         }
     }
 

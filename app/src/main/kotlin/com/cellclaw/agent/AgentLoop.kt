@@ -4,6 +4,7 @@ import android.util.Log
 import com.cellclaw.approval.ApprovalQueue
 import com.cellclaw.approval.ApprovalRequest
 import com.cellclaw.approval.ApprovalResult
+import com.cellclaw.config.AppConfig
 import com.cellclaw.config.Identity
 import com.cellclaw.memory.ConversationStore
 import com.cellclaw.provider.*
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 @Singleton
@@ -24,7 +26,9 @@ class AgentLoop @Inject constructor(
     private val approvalQueue: ApprovalQueue,
     private val conversationStore: ConversationStore,
     private val identity: Identity,
-    private val autonomyPolicy: AutonomyPolicy
+    private val autonomyPolicy: AutonomyPolicy,
+    private val appConfig: AppConfig,
+    private val heartbeatManagerProvider: Provider<HeartbeatManager>
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val json = Json { ignoreUnknownKeys = true }
@@ -37,11 +41,13 @@ class AgentLoop @Inject constructor(
 
     private val conversationHistory = mutableListOf<Message>()
     private var currentJob: Job? = null
+    private var isHeartbeatRun = false
 
     fun submitMessage(text: String) {
         currentJob?.cancel()
         currentJob = scope.launch {
             try {
+                isHeartbeatRun = false
                 _state.value = AgentState.THINKING
                 conversationHistory.add(Message.user(text))
                 conversationStore.addMessage("user", text)
@@ -54,6 +60,37 @@ class AgentLoop @Inject constructor(
                 Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
                 _state.value = AgentState.ERROR
                 _events.emit(AgentEvent.Error(e.message ?: "Unknown error"))
+            }
+        }
+    }
+
+    /**
+     * Submit a heartbeat prompt. Unlike submitMessage(), this does NOT cancel the
+     * current job. If the agent is busy, it reports SKIPPED_BUSY to the heartbeat manager.
+     */
+    fun submitHeartbeat(prompt: String) {
+        if (_state.value != AgentState.IDLE) {
+            heartbeatManagerProvider.get().onHeartbeatResult(HeartbeatResult.SKIPPED_BUSY)
+            return
+        }
+
+        currentJob = scope.launch {
+            try {
+                isHeartbeatRun = true
+                _state.value = AgentState.THINKING
+                // Add to in-memory history but do NOT persist to ConversationStore
+                conversationHistory.add(Message.user(prompt))
+                _events.emit(AgentEvent.HeartbeatStart)
+                runAgentLoop()
+            } catch (e: CancellationException) {
+                _state.value = AgentState.IDLE
+                heartbeatManagerProvider.get().onHeartbeatResult(HeartbeatResult.SKIPPED_BUSY)
+            } catch (e: Exception) {
+                Log.e(TAG, "Heartbeat error: ${e::class.simpleName}: ${e.message}")
+                _state.value = AgentState.ERROR
+                heartbeatManagerProvider.get().onHeartbeatResult(HeartbeatResult.ERROR)
+            } finally {
+                isHeartbeatRun = false
             }
         }
     }
@@ -76,9 +113,10 @@ class AgentLoop @Inject constructor(
 
     private suspend fun runAgentLoop() {
         var iterations = 0
-        val maxIterations = 40
+        val maxIterations = appConfig.maxIterations
+        var hadToolCallsThisRun = false
 
-        while (iterations < maxIterations && _state.value == AgentState.THINKING) {
+        while ((maxIterations == 0 || iterations < maxIterations) && _state.value == AgentState.THINKING) {
             iterations++
 
             val request = CompletionRequest(
@@ -97,9 +135,11 @@ class AgentLoop @Inject constructor(
             for (block in response.content) {
                 when (block) {
                     is ContentBlock.Text -> {
-                        if (!block.thought) {
+                        if (block.thought) {
+                            if (!isHeartbeatRun) _events.emit(AgentEvent.ThinkingText(block.text))
+                        } else {
                             textParts.add(block.text)
-                            _events.emit(AgentEvent.AssistantText(block.text))
+                            if (!isHeartbeatRun) _events.emit(AgentEvent.AssistantText(block.text))
                         }
                     }
                     is ContentBlock.ToolUse -> toolCalls.add(block)
@@ -110,7 +150,9 @@ class AgentLoop @Inject constructor(
             // Add assistant message to history
             conversationHistory.add(Message(Role.ASSISTANT, response.content))
 
-            if (textParts.isNotEmpty()) {
+            // Only persist to ConversationStore for non-heartbeat runs,
+            // or for heartbeat runs where the agent took action
+            if (textParts.isNotEmpty() && (!isHeartbeatRun || hadToolCallsThisRun)) {
                 conversationStore.addMessage("assistant", textParts.joinToString(""))
             }
 
@@ -119,16 +161,33 @@ class AgentLoop @Inject constructor(
                 "toolCalls=${toolCalls.size}, blocks=${response.content.size}, " +
                 "types=${response.content.map { it::class.simpleName }}")
             if (response.stopReason != StopReason.TOOL_USE || toolCalls.isEmpty()) {
+                // Handle heartbeat detection before transitioning to IDLE
+                if (isHeartbeatRun) {
+                    val detection = HeartbeatDetector.analyze(textParts, hadToolCallsThisRun)
+                    _events.emit(AgentEvent.HeartbeatComplete(detection))
+
+                    if (detection.isTaskComplete) {
+                        heartbeatManagerProvider.get().clearActiveTaskContext()
+                    }
+
+                    // Prune HEARTBEAT_OK exchanges from history to avoid context pollution
+                    if (detection.heartbeatResult == HeartbeatResult.OK_NOTHING_TO_DO) {
+                        pruneLastHeartbeatExchange()
+                    }
+
+                    heartbeatManagerProvider.get().onHeartbeatResult(detection.heartbeatResult)
+                }
                 _state.value = AgentState.IDLE
                 return
             }
 
             // Execute tool calls
+            hadToolCallsThisRun = true
             _state.value = AgentState.EXECUTING_TOOLS
             val toolResults = mutableListOf<ContentBlock>()
 
             for (call in toolCalls) {
-                _events.emit(AgentEvent.ToolCallStart(call.name, call.input))
+                if (!isHeartbeatRun) _events.emit(AgentEvent.ToolCallStart(call.name, call.input))
 
                 val tool = toolRegistry.get(call.name)
                 if (tool == null) {
@@ -144,7 +203,7 @@ class AgentLoop @Inject constructor(
                     toolResults.add(ContentBlock.ToolResult(
                         call.id, "Tool execution denied by user", isError = true
                     ))
-                    _events.emit(AgentEvent.ToolCallDenied(call.name))
+                    if (!isHeartbeatRun) _events.emit(AgentEvent.ToolCallDenied(call.name))
                     continue
                 }
 
@@ -164,7 +223,7 @@ class AgentLoop @Inject constructor(
                 toolResults.add(ContentBlock.ToolResult(
                     call.id, resultStr, isError = !result.success
                 ))
-                _events.emit(AgentEvent.ToolCallResult(call.name, result))
+                if (!isHeartbeatRun) _events.emit(AgentEvent.ToolCallResult(call.name, result))
             }
 
             // Add tool results to history
@@ -174,7 +233,28 @@ class AgentLoop @Inject constructor(
 
         if (iterations >= maxIterations) {
             _events.emit(AgentEvent.Error("Max iterations ($maxIterations) reached"))
+            if (isHeartbeatRun) {
+                heartbeatManagerProvider.get().onHeartbeatResult(HeartbeatResult.ERROR)
+            }
             _state.value = AgentState.IDLE
+        }
+    }
+
+    /**
+     * Remove the last heartbeat prompt + response pair from conversation history.
+     * This mirrors OpenClaw's transcript pruning for HEARTBEAT_OK responses.
+     */
+    private fun pruneLastHeartbeatExchange() {
+        // Walk backwards and remove the heartbeat user message + assistant response.
+        // There may be multiple messages if the agent did tool calls before responding.
+        // For a simple HEARTBEAT_OK (no tools), it's just 2 messages: user + assistant.
+        if (conversationHistory.size >= 2) {
+            val last = conversationHistory.last()
+            val secondLast = conversationHistory[conversationHistory.size - 2]
+            if (last.role == Role.ASSISTANT && secondLast.role == Role.USER) {
+                conversationHistory.removeAt(conversationHistory.size - 1)
+                conversationHistory.removeAt(conversationHistory.size - 1)
+            }
         }
     }
 
@@ -220,8 +300,11 @@ enum class AgentState {
 sealed class AgentEvent {
     data class UserMessage(val text: String) : AgentEvent()
     data class AssistantText(val text: String) : AgentEvent()
+    data class ThinkingText(val text: String) : AgentEvent()
     data class ToolCallStart(val name: String, val params: JsonObject) : AgentEvent()
     data class ToolCallResult(val name: String, val result: ToolResult) : AgentEvent()
     data class ToolCallDenied(val name: String) : AgentEvent()
     data class Error(val message: String) : AgentEvent()
+    data object HeartbeatStart : AgentEvent()
+    data class HeartbeatComplete(val detection: HeartbeatDetector.DetectionResult) : AgentEvent()
 }

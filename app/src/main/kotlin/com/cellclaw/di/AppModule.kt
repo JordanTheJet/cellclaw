@@ -8,6 +8,7 @@ import com.cellclaw.memory.MessageDao
 import com.cellclaw.provider.AnthropicProvider
 import com.cellclaw.provider.GeminiProvider
 import com.cellclaw.provider.OpenAIProvider
+import com.cellclaw.provider.OpenRouterProvider
 import com.cellclaw.tools.*
 import dagger.Module
 import dagger.Provides
@@ -53,6 +54,10 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideOpenRouterProvider(): OpenRouterProvider = OpenRouterProvider()
+
+    @Provides
+    @Singleton
     fun provideToolRegistry(
         smsRead: SmsReadTool,
         smsSend: SmsSendTool,
@@ -86,7 +91,8 @@ object AppModule {
         schedulerTool: SchedulerTool,
         messagingOpen: MessagingOpenTool,
         messagingRead: MessagingReadTool,
-        messagingReply: MessagingReplyTool
+        messagingReply: MessagingReplyTool,
+        heartbeatContext: HeartbeatContextTool
     ): ToolRegistry {
         return ToolRegistry().apply {
             register(
@@ -108,7 +114,8 @@ object AppModule {
                 screenCapture, visionAnalyze,
                 notificationListen,
                 schedulerTool,
-                messagingOpen, messagingRead, messagingReply
+                messagingOpen, messagingRead, messagingReply,
+                heartbeatContext
             )
         }
     }

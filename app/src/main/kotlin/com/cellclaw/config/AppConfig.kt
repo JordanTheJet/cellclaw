@@ -65,4 +65,13 @@ class AppConfig @Inject constructor(
     var wakeWordEnabled: Boolean
         get() = prefs.getBoolean("wake_word_enabled", false)
         set(value) = prefs.edit().putBoolean("wake_word_enabled", value).apply()
+
+    var heartbeatEnabled: Boolean
+        get() = prefs.getBoolean("heartbeat_enabled", true)
+        set(value) = prefs.edit().putBoolean("heartbeat_enabled", value).apply()
+
+    /** Whether to poll even when there's no active task context. */
+    var heartbeatAlwaysPoll: Boolean
+        get() = prefs.getBoolean("heartbeat_always_poll", false)
+        set(value) = prefs.edit().putBoolean("heartbeat_always_poll", value).apply()
 }
