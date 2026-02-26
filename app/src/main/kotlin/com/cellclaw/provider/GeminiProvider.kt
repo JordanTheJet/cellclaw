@@ -61,10 +61,11 @@ class GeminiProvider @Inject constructor() : Provider {
             for (tryModel in modelsToTry) {
                 val url = "$API_URL/$tryModel:generateContent?key=$apiKey"
 
-                // Retry up to 3 times for transient network errors (DNS, connection reset, etc.)
+                // Retry up to 3 times for transient errors (network errors + 5xx server errors)
                 var response: okhttp3.Response? = null
                 var responseBody: String? = null
                 var networkError: Exception? = null
+                var lastRetryCode: Int? = null
 
                 for (attempt in 1..3) {
                     try {
@@ -78,7 +79,19 @@ class GeminiProvider @Inject constructor() : Provider {
                         responseBody = response.body?.string()
                             ?: throw ProviderException("Empty response body")
                         networkError = null
-                        break
+
+                        // Retry on 5xx server errors (500, 502, 503, 504)
+                        if (response.code in 500..599) {
+                            lastRetryCode = response.code
+                            Log.w(TAG, "Server error ${response.code} (attempt $attempt/3) for $tryModel: ${responseBody.take(200)}")
+                            if (attempt < 3) {
+                                kotlinx.coroutines.delay(1000L * attempt)
+                                continue
+                            }
+                            // On final attempt, fall through to normal error handling below
+                        } else {
+                            break
+                        }
                     } catch (e: java.io.IOException) {
                         Log.w(TAG, "Network error (attempt $attempt/3) for $tryModel: ${e::class.simpleName}: ${e.message}")
                         networkError = e
@@ -89,7 +102,9 @@ class GeminiProvider @Inject constructor() : Provider {
                 }
 
                 if (networkError != null) {
-                    throw ProviderException("Network error after 3 retries: ${networkError.message}", networkError)
+                    lastError = "Network error after 3 retries: ${networkError.message}"
+                    Log.w(TAG, "$lastError — trying next model fallback...")
+                    continue
                 }
 
                 val resp = response!!
@@ -97,26 +112,32 @@ class GeminiProvider @Inject constructor() : Provider {
 
                 if (resp.isSuccessful) {
                     if (tryModel != model) {
-                        Log.w(TAG, "Model $model unavailable, fell back to $tryModel (not locking in — may be temporary rate limit)")
+                        Log.w(TAG, "Model $model unavailable, fell back to $tryModel (not locking in — may be temporary)")
                     }
                     Log.d(TAG, "Raw response (truncated): ${respBody.take(6000)}")
                     return@withContext parseResponse(json.parseToJsonElement(respBody).jsonObject)
                 }
 
-                // If 404 (model not found) or 429 (rate limited), try next fallback
-                if (resp.code == 404 || resp.code == 429) {
-                    val reason = if (resp.code == 429) "rate limited" else "not found"
+                // If 404, 429, 400, or 5xx after retries exhausted — try next fallback model
+                if (resp.code == 404 || resp.code == 429 || resp.code == 400 || resp.code in 500..599) {
+                    val reason = when (resp.code) {
+                        429 -> "rate limited"
+                        400 -> "bad request (possible thoughtSignature mismatch)"
+                        in 500..599 -> "server error (${resp.code}) after retries"
+                        else -> "not found"
+                    }
                     Log.w(TAG, "Model $tryModel $reason (${resp.code}), trying next fallback...")
+                    Log.w(TAG, "Error body: ${respBody.take(500)}")
                     lastError = "Gemini API error ${resp.code}: $respBody"
                     continue
                 }
 
-                // Other errors (401, 500, etc.) — don't fallback, throw immediately
+                // Non-retryable errors (401, 403, etc.) — throw immediately
                 Log.e(TAG, "Gemini API error ${resp.code}: ${respBody.take(2000)}")
                 throw ProviderException("Gemini API error ${resp.code}: $respBody")
             }
 
-            throw ProviderException("All models unavailable. Last error: $lastError")
+            throw ProviderException("All Gemini models unavailable. Last error: $lastError")
         }
 
     override fun stream(request: CompletionRequest): Flow<StreamEvent> = flow {

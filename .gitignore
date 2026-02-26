@@ -19,3 +19,8 @@ local.properties
 *.jpeg
 .env
 .env.*
+
+# Wake word training data
+ml/training_data/
+ml/*.tflite
+ml/mfcc_config.json

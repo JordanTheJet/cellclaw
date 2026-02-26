@@ -57,6 +57,22 @@ class WakeWordService : Service() {
                 startForeground(NOTIFICATION_ID, buildNotification("Listening for wake word..."))
                 startDetection()
             }
+            ACTION_ACTIVATE -> {
+                // Triggered by hardware hotkey — start voice listening immediately
+                Log.d(TAG, "Hotkey activation received")
+                if (serviceScope == null) {
+                    // Service not fully started yet — start it first
+                    try {
+                        startForeground(NOTIFICATION_ID, buildNotification("Listening for command..."))
+                        startDetection()
+                    } catch (e: SecurityException) {
+                        Log.e(TAG, "Cannot start foreground service: ${e.message}")
+                        stopSelf()
+                        return START_STICKY
+                    }
+                }
+                serviceScope?.launch { handleWakeWordDetected() }
+            }
             ACTION_STOP -> {
                 stopDetection()
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -291,6 +307,7 @@ class WakeWordService : Service() {
 
     companion object {
         const val ACTION_START = "com.cellclaw.wakeword.START"
+        const val ACTION_ACTIVATE = "com.cellclaw.wakeword.ACTIVATE"
         const val ACTION_STOP = "com.cellclaw.wakeword.STOP"
         const val NOTIFICATION_ID = 2
         private const val DETECTION_THRESHOLD = 0.85f

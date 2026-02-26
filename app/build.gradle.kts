@@ -31,7 +31,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "CellClaw Dev")
+        }
         release {
+            resValue("string", "app_name", "CellClaw")
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

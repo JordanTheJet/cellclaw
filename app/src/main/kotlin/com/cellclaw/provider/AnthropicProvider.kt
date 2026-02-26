@@ -42,16 +42,40 @@ class AnthropicProvider @Inject constructor() : Provider {
     override suspend fun complete(request: CompletionRequest): CompletionResponse =
         withContext(Dispatchers.IO) {
             val body = buildRequestBody(request, stream = false)
-            val httpRequest = buildHttpRequest(body)
-            val response = client.newCall(httpRequest).execute()
-            val responseBody = response.body?.string()
-                ?: throw ProviderException("Empty response body")
 
-            if (!response.isSuccessful) {
-                throw ProviderException("API error ${response.code}: $responseBody")
+            // Retry up to 3 times for transient errors (network + 5xx + 429)
+            var lastException: Exception? = null
+            for (attempt in 1..3) {
+                try {
+                    val httpRequest = buildHttpRequest(body)
+                    val response = client.newCall(httpRequest).execute()
+                    val responseBody = response.body?.string()
+                        ?: throw ProviderException("Empty response body")
+
+                    // Retry on 5xx or 429 (overloaded)
+                    if (response.code in 500..599 || response.code == 429) {
+                        lastException = ProviderException("API error ${response.code}: $responseBody")
+                        if (attempt < 3) {
+                            kotlinx.coroutines.delay(1000L * attempt)
+                            continue
+                        }
+                        throw lastException
+                    }
+
+                    if (!response.isSuccessful) {
+                        throw ProviderException("API error ${response.code}: $responseBody")
+                    }
+
+                    return@withContext parseCompletionResponse(json.parseToJsonElement(responseBody).jsonObject)
+                } catch (e: java.io.IOException) {
+                    lastException = e
+                    if (attempt < 3) {
+                        kotlinx.coroutines.delay(1000L * attempt)
+                        continue
+                    }
+                }
             }
-
-            parseCompletionResponse(json.parseToJsonElement(responseBody).jsonObject)
+            throw ProviderException("Anthropic API failed after 3 retries: ${lastException?.message}", lastException)
         }
 
     override fun stream(request: CompletionRequest): Flow<StreamEvent> = flow {

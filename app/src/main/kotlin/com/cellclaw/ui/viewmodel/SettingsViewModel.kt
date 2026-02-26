@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.cellclaw.agent.AutonomyPolicy
 import com.cellclaw.agent.PermissionProfile
 import com.cellclaw.agent.ToolApprovalPolicy
+import com.cellclaw.agent.AccessMode
 import com.cellclaw.config.AppConfig
 import com.cellclaw.provider.ProviderInfo
 import com.cellclaw.provider.ProviderManager
@@ -61,6 +62,9 @@ class SettingsViewModel @Inject constructor(
 
     private val _availableModels = MutableStateFlow(modelsForProvider(_activeProvider.value))
     val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+
+    val appAccessModeLabel: String
+        get() = AccessMode.fromKey(appConfig.appAccessMode).displayName
 
     private fun modelsForProvider(type: String): List<String> =
         providerManager.availableProviders().find { it.type == type }?.models ?: emptyList()

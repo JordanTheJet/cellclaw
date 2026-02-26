@@ -1,5 +1,6 @@
 package com.cellclaw.agent
 
+import android.content.Context
 import android.util.Log
 import com.cellclaw.approval.ApprovalQueue
 import com.cellclaw.approval.ApprovalRequest
@@ -9,8 +10,10 @@ import com.cellclaw.config.Identity
 import com.cellclaw.memory.ConversationStore
 import com.cellclaw.provider.*
 import com.cellclaw.provider.ProviderManager
+import com.cellclaw.service.AccessibilityBridge
 import com.cellclaw.tools.ToolRegistry
 import com.cellclaw.tools.ToolResult
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
@@ -27,8 +30,10 @@ class AgentLoop @Inject constructor(
     private val conversationStore: ConversationStore,
     private val identity: Identity,
     private val autonomyPolicy: AutonomyPolicy,
+    private val appAccessPolicy: AppAccessPolicy,
     private val appConfig: AppConfig,
-    private val heartbeatManagerProvider: Provider<HeartbeatManager>
+    private val heartbeatManagerProvider: Provider<HeartbeatManager>,
+    @ApplicationContext private val context: Context
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val json = Json { ignoreUnknownKeys = true }
@@ -126,7 +131,12 @@ class AgentLoop @Inject constructor(
                 maxTokens = 4096
             )
 
-            val response = providerManager.activeProvider().complete(request)
+            val response = providerManager.completeWithFailover(request)
+
+            // Notify UI if a cross-provider failover occurred
+            providerManager.lastFailoverEvent?.let { failover ->
+                _events.emit(AgentEvent.ProviderFailover(failover.fromProvider, failover.toProvider, failover.reason))
+            }
 
             // Process response content
             val textParts = mutableListOf<String>()
@@ -207,6 +217,16 @@ class AgentLoop @Inject constructor(
                     continue
                 }
 
+                // Check app access policy
+                val appAccessError = checkAppAccess(call.name, call.input)
+                if (appAccessError != null) {
+                    toolResults.add(ContentBlock.ToolResult(
+                        call.id, appAccessError, isError = true
+                    ))
+                    if (!isHeartbeatRun) _events.emit(AgentEvent.ToolCallDenied(call.name))
+                    continue
+                }
+
                 // Execute
                 val result = try {
                     tool.execute(call.input)
@@ -258,6 +278,27 @@ class AgentLoop @Inject constructor(
         }
     }
 
+    /**
+     * Check if the tool is allowed to interact with its target app.
+     * Returns an error message if blocked, null if allowed.
+     */
+    private suspend fun checkAppAccess(toolName: String, params: JsonObject): String? {
+        if (!appAccessPolicy.isAppTargetingTool(toolName)) return null
+
+        val targetPackage = appAccessPolicy.resolvePackageFromParams(toolName, params)
+            ?: if (appAccessPolicy.isForegroundTool(toolName)) {
+                AccessibilityBridge.getForegroundPackage(context)
+            } else null
+
+        if (targetPackage == null) return null // Can't determine target, allow
+
+        if (!appAccessPolicy.isAppAllowed(targetPackage)) {
+            return "Access to $targetPackage is blocked by app access policy. " +
+                "The user has restricted CellClaw from interacting with this app."
+        }
+        return null
+    }
+
     private suspend fun checkApproval(toolName: String, params: JsonObject): Boolean {
         val policy = autonomyPolicy.getPolicy(toolName)
         return when (policy) {
@@ -307,4 +348,5 @@ sealed class AgentEvent {
     data class Error(val message: String) : AgentEvent()
     data object HeartbeatStart : AgentEvent()
     data class HeartbeatComplete(val detection: HeartbeatDetector.DetectionResult) : AgentEvent()
+    data class ProviderFailover(val fromProvider: String, val toProvider: String, val reason: String) : AgentEvent()
 }
