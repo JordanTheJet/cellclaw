@@ -6,8 +6,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.ToneGenerator
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.VibrationEffect
@@ -19,11 +21,15 @@ import com.cellclaw.CellClawApp
 import com.cellclaw.R
 import com.cellclaw.agent.AgentLoop
 import com.cellclaw.ui.MainActivity
+import com.cellclaw.voice.ListeningPhase
+import com.cellclaw.voice.VoiceListeningState
 import com.cellclaw.voice.VoiceManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlin.coroutines.coroutineContext
+import kotlin.math.sqrt
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.selects.select
 import javax.inject.Inject
 
 /**
@@ -39,10 +45,13 @@ class WakeWordService : Service() {
     @Inject lateinit var wakeWordDetector: WakeWordDetector
     @Inject lateinit var voiceManager: VoiceManager
     @Inject lateinit var agentLoop: AgentLoop
+    @Inject lateinit var voiceListeningState: VoiceListeningState
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var serviceScope: CoroutineScope? = null
     private var audioRecord: AudioRecord? = null
+
+    @Volatile private var detectionPaused = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -54,8 +63,13 @@ class WakeWordService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                startForeground(NOTIFICATION_ID, buildNotification("Listening for wake word..."))
-                startDetection()
+                try {
+                    startForeground(NOTIFICATION_ID, buildNotification("Listening for wake word..."))
+                    startDetection()
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "Cannot start foreground service: ${e.message}")
+                    stopSelf()
+                }
             }
             ACTION_STOP -> {
                 stopDetection()
@@ -143,6 +157,22 @@ class WakeWordService : Service() {
         val readChunk = ShortArray(hopSamples)
 
         while (coroutineContext.isActive) {
+            // Pause detection while speech recognition is active
+            if (detectionPaused) {
+                audioRecord?.stop()
+                Log.d(TAG, "Detection paused, mic released for speech recognition")
+                while (detectionPaused && coroutineContext.isActive) {
+                    delay(100)
+                }
+                if (!coroutineContext.isActive) break
+                // Resume recording, reset ring buffer
+                ringPos = 0
+                samplesRead = 0
+                audioRecord?.startRecording()
+                Log.d(TAG, "Detection resumed")
+                continue
+            }
+
             // Read a hop-sized chunk
             val read = audioRecord?.read(readChunk, 0, hopSamples) ?: -1
             if (read <= 0) {
@@ -166,12 +196,25 @@ class WakeWordService : Service() {
                 window[i] = ringBuffer[(ringPos + i) % windowSamples]
             }
 
+            // Energy gate: skip inference if audio is too quiet (movement/noise)
+            val rms = computeRms(window)
+            if (rms < MIN_RMS_ENERGY) {
+                continue
+            }
+
             // Run detection
             val confidence = wakeWordDetector.detect(window)
 
+            // Debug: log all confidence scores above noise floor
+            if (confidence >= 0.30f) {
+                Log.d(TAG, "Confidence: $confidence (rms=$rms)")
+            }
+
             if (confidence >= DETECTION_THRESHOLD) {
-                Log.d(TAG, "Wake word detected! Confidence: $confidence")
+                Log.d(TAG, "Wake word detected! Confidence: $confidence, rms=$rms")
                 handleWakeWordDetected()
+                // Cooldown: skip a few windows after detection to avoid re-triggering
+                delay(COOLDOWN_MS)
             }
         }
 
@@ -180,37 +223,97 @@ class WakeWordService : Service() {
     }
 
     private suspend fun handleWakeWordDetected() {
-        withContext(Dispatchers.Main) {
-            // Vibrate
-            vibrate()
+        // 1. Pause AudioRecord (release mic for speech recognizer)
+        detectionPaused = true
 
-            // Wake screen
+        withContext(Dispatchers.Main) {
+            // 2. Signal overlay: ACTIVATED
+            voiceListeningState.setPhase(ListeningPhase.ACTIVATED)
+            voiceListeningState.setDisplayText("Listening...")
+
+            // 3. Vibrate + wake screen
+            vibrate()
             wakeScreen()
 
-            // Update notification
-            val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-            manager.notify(NOTIFICATION_ID, buildNotification("Wake word detected! Listening..."))
+            // 4. Play activation chime
+            playActivationChime()
+        }
 
-            // Start voice recognition
+        // 5. Short delay for chime to finish before starting speech recognition
+        delay(300)
+
+        withContext(Dispatchers.Main) {
+            // 6. Signal overlay: LISTENING
+            voiceListeningState.setPhase(ListeningPhase.LISTENING)
+
+            // 7. Update notification
+            val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            manager.notify(NOTIFICATION_ID, buildNotification("Listening for command..."))
+
+            // 8. Start SpeechRecognizer (mic now free)
             voiceManager.startListening()
         }
 
-        // Wait for recognized text with timeout
-        val text = withTimeoutOrNull(COMMAND_TIMEOUT_MS) {
-            voiceManager.recognizedText.first()
+        // 9. Forward partial results to the overlay
+        val partialJob = serviceScope?.launch {
+            voiceManager.partialText.collect { text ->
+                if (text.isNotBlank()) {
+                    voiceListeningState.setDisplayText(text)
+                }
+            }
         }
+
+        // 10. Wait for final result — race between success, error, and safety timeout.
+        // SpeechRecognizer handles silence detection natively, so timeout is just a safety net.
+        val text = withTimeoutOrNull(COMMAND_TIMEOUT_MS) {
+            select<String?> {
+                // Success path: recognizer got a result
+                async { voiceManager.recognizedText.first() }.onAwait { it }
+                // Error path: recognizer hit an error (no match, network, etc.)
+                async { voiceManager.recognitionFailed.first(); null }.onAwait { it }
+            }
+        }
+
+        partialJob?.cancel()
 
         if (!text.isNullOrBlank()) {
             Log.d(TAG, "Command received: $text")
+            withContext(Dispatchers.Main) {
+                voiceListeningState.setPhase(ListeningPhase.PROCESSING)
+                voiceListeningState.setDisplayText(text)
+            }
             agentLoop.submitMessage(text)
+            // Longer delay so user can see the recognized text
+            delay(1500)
         } else {
-            Log.d(TAG, "No command received within timeout")
+            Log.d(TAG, "No command received (error or timeout)")
+            withContext(Dispatchers.Main) {
+                voiceListeningState.setDisplayText("No speech detected")
+            }
+            delay(800)
         }
 
-        // Return to passive listening
+        // 12. Dismiss overlay, resume AudioRecord
         withContext(Dispatchers.Main) {
+            voiceListeningState.reset()
             val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
             manager.notify(NOTIFICATION_ID, buildNotification("Listening for wake word..."))
+        }
+
+        // 13. Resume detection loop
+        detectionPaused = false
+    }
+
+    private fun playActivationChime() {
+        try {
+            val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
+            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP2, 150)
+            serviceScope?.launch {
+                delay(200)
+                toneGen.release()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Chime failed: ${e.message}")
         }
     }
 
@@ -272,6 +375,14 @@ class WakeWordService : Service() {
             .build()
     }
 
+    private fun computeRms(samples: ShortArray): Double {
+        var sumSquares = 0.0
+        for (s in samples) {
+            sumSquares += s.toDouble() * s.toDouble()
+        }
+        return sqrt(sumSquares / samples.size)
+    }
+
     private fun acquireWakeLock() {
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
@@ -293,8 +404,10 @@ class WakeWordService : Service() {
         const val ACTION_START = "com.cellclaw.wakeword.START"
         const val ACTION_STOP = "com.cellclaw.wakeword.STOP"
         const val NOTIFICATION_ID = 2
-        private const val DETECTION_THRESHOLD = 0.85f
-        private const val COMMAND_TIMEOUT_MS = 30_000L
+        private const val DETECTION_THRESHOLD = 0.55f
+        private const val MIN_RMS_ENERGY = 300.0  // Skip inference if audio is quieter than this
+        private const val COMMAND_TIMEOUT_MS = 30_000L  // Safety net only; recognizer stops on silence
+        private const val COOLDOWN_MS = 2_000L  // Prevent re-triggering right after detection
         private const val TAG = "WakeWordService"
     }
 }
