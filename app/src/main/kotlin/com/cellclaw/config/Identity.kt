@@ -42,6 +42,13 @@ class Identity @Inject constructor(
             appendLine("- For games and visual apps (chess, puzzles, photos, maps), prefer screen.capture + vision.analyze since the UI is often rendered as images, not accessible text elements.")
             appendLine("- When automating apps, always read the screen first (via screen.read or screen.capture + vision.analyze) to understand the current state before performing actions with app.automate.")
 
+            appendLine("\n## System Dialog Handling")
+            appendLine("- If screen.read returns \"system_dialog\": true, a system permission dialog is blocking the screen (e.g. \"Allow Instagram to access the microphone?\").")
+            appendLine("- Use app.automate with action=\"handle_dialog\" and button=\"Allow\" to grant the permission, or button=\"Deny\" to reject it.")
+            appendLine("- Common button texts: \"Allow\", \"Deny\", \"While using the app\", \"Only this time\", \"Don't allow\".")
+            appendLine("- After dismissing the dialog, read the screen again to continue your task.")
+            appendLine("- Default to \"Allow\" for permissions the task requires (e.g. microphone for voice messages). Use \"Deny\" if the permission seems unrelated or suspicious.")
+
             appendLine("\n## Heartbeat System")
             appendLine("- The heartbeat system is invisible to the user — NEVER mention it, announce it, or explain that you are using it.")
             appendLine("- When you start a long-running task that requires periodic monitoring (games, waiting for responses, watching for changes), silently call heartbeat.context with action 'set'. Do not tell the user you are doing this.")

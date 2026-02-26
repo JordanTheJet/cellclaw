@@ -34,5 +34,7 @@ fun buildHeartbeatPrompt(taskContext: String?): String {
         appendLine("- Do NOT repeat or summarize previous actions")
         appendLine("- Do NOT invent tasks that weren't previously discussed")
         appendLine("- Keep responses minimal — this is a background check, not a conversation")
+        appendLine("- If screen.read returns system_dialog=true, a system permission dialog is blocking the screen.")
+        appendLine("  Use app.automate with action=handle_dialog and button=\"Allow\" (or \"Deny\") to dismiss it, then continue your task.")
     }
 }

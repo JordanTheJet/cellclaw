@@ -90,17 +90,19 @@ class AppAutomateTool @Inject constructor(
 ) : Tool {
     override val name = "app.automate"
     override val description = """Automate actions in other apps using AccessibilityService.
-Actions: tap (by text or coordinates), type (into focused field), swipe (left/right/up/down for card swiping), scroll (up/down), back, home, find_element.
+Actions: tap (by text or coordinates), type (into focused field), swipe (left/right/up/down for card swiping), scroll (up/down), back, home, find_element, handle_dialog.
+Use handle_dialog when a system permission dialog appears (e.g. "Allow Instagram to access the microphone?"). Pass button="Allow" or button="Deny".
 Requires accessibility permission enabled in system settings."""
     override val parameters = ToolParameters(
         properties = mapOf(
             "action" to ParameterProperty("string", "Action to perform",
-                enum = listOf("tap", "type", "swipe", "scroll", "back", "home", "recents", "find_element")),
+                enum = listOf("tap", "type", "swipe", "scroll", "back", "home", "recents", "find_element", "handle_dialog")),
             "text" to ParameterProperty("string", "Text to type, or text of element to tap/find"),
             "x" to ParameterProperty("integer", "X coordinate for tap"),
             "y" to ParameterProperty("integer", "Y coordinate for tap"),
             "direction" to ParameterProperty("string", "Direction for swipe/scroll",
-                enum = listOf("left", "right", "up", "down"))
+                enum = listOf("left", "right", "up", "down")),
+            "button" to ParameterProperty("string", "Button to tap on system dialog (e.g. 'Allow', 'Deny', 'While using the app')")
         ),
         required = listOf("action")
     )
@@ -126,6 +128,7 @@ Requires accessibility permission enabled in system settings."""
                 params["x"]?.jsonPrimitive?.intOrNull?.let { putExtra("x", it) }
                 params["y"]?.jsonPrimitive?.intOrNull?.let { putExtra("y", it) }
                 params["direction"]?.jsonPrimitive?.contentOrNull?.let { putExtra("direction", it) }
+                params["button"]?.jsonPrimitive?.contentOrNull?.let { putExtra("button", it) }
                 setPackage(context.packageName)
             }
             context.sendBroadcast(intent)
