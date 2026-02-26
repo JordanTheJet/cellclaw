@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">CellClaw</string>
+    <!-- app_name is set via resValue in build.gradle.kts per build type -->
     <string name="notification_channel_service">CellClaw Service</string>
     <string name="notification_channel_approvals">Approval Requests</string>
     <string name="notification_channel_alerts">Alerts</string>

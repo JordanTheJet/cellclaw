@@ -77,7 +77,13 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("settings") {
-                            SettingsScreen(onBack = { navController.popBackStack() })
+                            SettingsScreen(
+                                onBack = { navController.popBackStack() },
+                                onNavigateToAppAccess = { navController.navigate("app_access") }
+                            )
+                        }
+                        composable("app_access") {
+                            AppAccessScreen(onBack = { navController.popBackStack() })
                         }
                         composable("skills") {
                             SkillsScreen(onBack = { navController.popBackStack() })

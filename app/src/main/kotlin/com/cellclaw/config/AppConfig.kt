@@ -74,4 +74,14 @@ class AppConfig @Inject constructor(
     var heartbeatAlwaysPoll: Boolean
         get() = prefs.getBoolean("heartbeat_always_poll", false)
         set(value) = prefs.edit().putBoolean("heartbeat_always_poll", value).apply()
+
+    /** App access mode: "all_on", "smart", or "all_off". */
+    var appAccessMode: String
+        get() = prefs.getString("app_access_mode", "all_on") ?: "all_on"
+        set(value) = prefs.edit().putString("app_access_mode", value).apply()
+
+    /** Set of package names that override the mode default. */
+    var appAccessOverrides: Set<String>
+        get() = prefs.getStringSet("app_access_overrides", emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet("app_access_overrides", value).apply()
 }

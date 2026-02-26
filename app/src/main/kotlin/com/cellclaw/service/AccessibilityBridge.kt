@@ -1,5 +1,7 @@
 package com.cellclaw.service
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,6 +11,8 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
@@ -69,5 +73,23 @@ object AccessibilityBridge {
         } catch (e: Exception) {
             buildJsonObject { put("error", "Timeout waiting for accessibility result") }
         }
+    }
+
+    /**
+     * Query the accessibility service for the foreground app's package name.
+     * Returns null if the service is not connected or the query fails.
+     */
+    suspend fun getForegroundPackage(context: Context): String? {
+        if (!isServiceConnected) return null
+        val (receiver, deferred) = createReceiver()
+        val intent = Intent(CellClawAccessibility.ACTION_COMMAND).apply {
+            putExtra("result_receiver", receiver)
+            putExtra("action", "get_foreground_package")
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intent)
+        val result = awaitResult(deferred, 3_000)
+        val pkg = result["package"]?.jsonPrimitive?.contentOrNull
+        return if (pkg != null && pkg != "unknown") pkg else null
     }
 }

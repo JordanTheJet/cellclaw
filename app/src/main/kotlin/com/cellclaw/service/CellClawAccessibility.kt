@@ -15,6 +15,7 @@ import android.os.ResultReceiver
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Display
+import android.view.KeyEvent
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -26,6 +27,12 @@ class CellClawAccessibility : AccessibilityService() {
 
     private var screenWidth = 1080
     private var screenHeight = 2400
+
+    // Volume hotkey tracking: long-press both volume buttons to activate
+    private var volumeUpDown = false
+    private var volumeDownDown = false
+    private var hotKeyHandler: android.os.Handler? = null
+    private var hotKeyPending: Runnable? = null
 
     private val actionReceiver = object : BroadcastReceiver() {
         @Suppress("DEPRECATION")
@@ -59,6 +66,9 @@ class CellClawAccessibility : AccessibilityService() {
                     successResult("recents", "Opened recents")
                 }
                 "read_screen" -> readScreen()
+                "get_foreground_package" -> buildJsonObject {
+                    put("package", rootInActiveWindow?.packageName?.toString() ?: "unknown")
+                }
                 "find_element" -> findElement(intent.getStringExtra("text") ?: "")
                 "screenshot" -> {
                     handleScreenshot(resultReceiver)
@@ -90,6 +100,7 @@ class CellClawAccessibility : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         updateScreenDimensions()
+        hotKeyHandler = android.os.Handler(mainLooper)
 
         val filter = IntentFilter(ACTION_COMMAND)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -107,6 +118,54 @@ class CellClawAccessibility : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {}
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
+        val action = event.action
+
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            when (action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) volumeUpDown = true
+                    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) volumeDownDown = true
+
+                    if (volumeUpDown && volumeDownDown && hotKeyPending == null) {
+                        // Both buttons held — start 1-second timer
+                        val runnable = Runnable {
+                            hotKeyPending = null
+                            if (volumeUpDown && volumeDownDown) {
+                                Log.d(TAG, "Hotkey activated: both volume buttons held")
+                                triggerVoiceActivation()
+                            }
+                        }
+                        hotKeyPending = runnable
+                        hotKeyHandler?.postDelayed(runnable, HOTKEY_HOLD_MS)
+                    }
+                    // Consume the event so volume doesn't change
+                    return true
+                }
+                KeyEvent.ACTION_UP -> {
+                    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) volumeUpDown = false
+                    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) volumeDownDown = false
+
+                    // Cancel pending hotkey if a button was released too early
+                    hotKeyPending?.let {
+                        hotKeyHandler?.removeCallbacks(it)
+                        hotKeyPending = null
+                    }
+                    return true
+                }
+            }
+        }
+        return super.onKeyEvent(event)
+    }
+
+    private fun triggerVoiceActivation() {
+        val intent = Intent(this, com.cellclaw.wakeword.WakeWordService::class.java).apply {
+            action = com.cellclaw.wakeword.WakeWordService.ACTION_ACTIVATE
+        }
+        startService(intent)
+    }
 
     override fun onDestroy() {
         AccessibilityBridge.onServiceDisconnected()
@@ -432,5 +491,6 @@ class CellClawAccessibility : AccessibilityService() {
     companion object {
         private const val TAG = "CellClawA11y"
         const val ACTION_COMMAND = "com.cellclaw.ACCESSIBILITY_ACTION"
+        private const val HOTKEY_HOLD_MS = 800L  // Hold both volume buttons for 800ms
     }
 }

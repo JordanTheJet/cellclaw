@@ -1,16 +1,25 @@
 package com.cellclaw.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -32,6 +41,7 @@ import com.cellclaw.wakeword.WakeWordService
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onNavigateToAppAccess: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val permissionProfile by viewModel.permissionProfile.collectAsState()
@@ -48,6 +58,21 @@ fun SettingsScreen(
     val maxIterations by viewModel.maxIterations.collectAsState()
     val wakeWordEnabled by viewModel.wakeWordEnabled.collectAsState()
     val context = LocalContext.current
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.setWakeWordEnabled(true)
+            context.startForegroundService(
+                Intent(context, WakeWordService::class.java).apply {
+                    action = WakeWordService.ACTION_START
+                }
+            )
+        } else {
+            Toast.makeText(context, "Microphone permission required for wake word", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -358,14 +383,22 @@ fun SettingsScreen(
                         Switch(
                             checked = wakeWordEnabled,
                             onCheckedChange = { enabled ->
-                                viewModel.setWakeWordEnabled(enabled)
                                 if (enabled) {
-                                    context.startForegroundService(
-                                        Intent(context, WakeWordService::class.java).apply {
-                                            action = WakeWordService.ACTION_START
-                                        }
-                                    )
+                                    val hasMic = ContextCompat.checkSelfPermission(
+                                        context, Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    if (hasMic) {
+                                        viewModel.setWakeWordEnabled(true)
+                                        context.startForegroundService(
+                                            Intent(context, WakeWordService::class.java).apply {
+                                                action = WakeWordService.ACTION_START
+                                            }
+                                        )
+                                    } else {
+                                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
                                 } else {
+                                    viewModel.setWakeWordEnabled(false)
                                     context.startService(
                                         Intent(context, WakeWordService::class.java).apply {
                                             action = WakeWordService.ACTION_STOP
@@ -416,6 +449,55 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+            }
+
+            // App Access
+            Text("App Access", style = MaterialTheme.typography.titleMedium)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToAppAccess() }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            Icons.Default.PhoneAndroid,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column {
+                            Text(
+                                "Manage App Access",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                "Control which apps CellClaw can interact with",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "Mode: ${viewModel.appAccessModeLabel}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = "Open",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 

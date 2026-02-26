@@ -103,10 +103,16 @@ class GeminiProvider @Inject constructor() : Provider {
                     return@withContext parseResponse(json.parseToJsonElement(respBody).jsonObject)
                 }
 
-                // If 404 (model not found) or 429 (rate limited), try next fallback
-                if (resp.code == 404 || resp.code == 429) {
-                    val reason = if (resp.code == 429) "rate limited" else "not found"
+                // If 404 (model not found), 429 (rate limited), or 400 (often
+                // thoughtSignature mismatch between model versions), try next fallback
+                if (resp.code == 404 || resp.code == 429 || resp.code == 400) {
+                    val reason = when (resp.code) {
+                        429 -> "rate limited"
+                        400 -> "bad request (possible thoughtSignature mismatch)"
+                        else -> "not found"
+                    }
                     Log.w(TAG, "Model $tryModel $reason (${resp.code}), trying next fallback...")
+                    Log.w(TAG, "Error body: ${respBody.take(500)}")
                     lastError = "Gemini API error ${resp.code}: $respBody"
                     continue
                 }
