@@ -131,7 +131,12 @@ class AgentLoop @Inject constructor(
                 maxTokens = 4096
             )
 
-            val response = providerManager.activeProvider().complete(request)
+            val response = providerManager.completeWithFailover(request)
+
+            // Notify UI if a cross-provider failover occurred
+            providerManager.lastFailoverEvent?.let { failover ->
+                _events.emit(AgentEvent.ProviderFailover(failover.fromProvider, failover.toProvider, failover.reason))
+            }
 
             // Process response content
             val textParts = mutableListOf<String>()
@@ -343,4 +348,5 @@ sealed class AgentEvent {
     data class Error(val message: String) : AgentEvent()
     data object HeartbeatStart : AgentEvent()
     data class HeartbeatComplete(val detection: HeartbeatDetector.DetectionResult) : AgentEvent()
+    data class ProviderFailover(val fromProvider: String, val toProvider: String, val reason: String) : AgentEvent()
 }

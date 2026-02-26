@@ -43,22 +43,46 @@ class OpenAIProvider @Inject constructor() : Provider {
     override suspend fun complete(request: CompletionRequest): CompletionResponse =
         withContext(Dispatchers.IO) {
             val body = buildRequestBody(request)
-            val httpRequest = Request.Builder()
-                .url(API_URL)
-                .addHeader("Authorization", "Bearer $apiKey")
-                .addHeader("Content-Type", "application/json")
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
 
-            val response = client.newCall(httpRequest).execute()
-            val responseBody = response.body?.string()
-                ?: throw ProviderException("Empty response body")
+            // Retry up to 3 times for transient errors (network + 5xx server errors)
+            var lastException: Exception? = null
+            for (attempt in 1..3) {
+                try {
+                    val httpRequest = Request.Builder()
+                        .url(API_URL)
+                        .addHeader("Authorization", "Bearer $apiKey")
+                        .addHeader("Content-Type", "application/json")
+                        .post(body.toRequestBody("application/json".toMediaType()))
+                        .build()
 
-            if (!response.isSuccessful) {
-                throw ProviderException("API error ${response.code}: $responseBody")
+                    val response = client.newCall(httpRequest).execute()
+                    val responseBody = response.body?.string()
+                        ?: throw ProviderException("Empty response body")
+
+                    // Retry on 5xx or 429
+                    if (response.code in 500..599 || response.code == 429) {
+                        lastException = ProviderException("API error ${response.code}: $responseBody")
+                        if (attempt < 3) {
+                            kotlinx.coroutines.delay(1000L * attempt)
+                            continue
+                        }
+                        throw lastException
+                    }
+
+                    if (!response.isSuccessful) {
+                        throw ProviderException("API error ${response.code}: $responseBody")
+                    }
+
+                    return@withContext parseResponse(json.parseToJsonElement(responseBody).jsonObject)
+                } catch (e: java.io.IOException) {
+                    lastException = e
+                    if (attempt < 3) {
+                        kotlinx.coroutines.delay(1000L * attempt)
+                        continue
+                    }
+                }
             }
-
-            parseResponse(json.parseToJsonElement(responseBody).jsonObject)
+            throw ProviderException("OpenAI API failed after 3 retries: ${lastException?.message}", lastException)
         }
 
     override fun stream(request: CompletionRequest): Flow<StreamEvent> = flow {
