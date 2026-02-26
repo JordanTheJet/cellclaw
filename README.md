@@ -1,13 +1,39 @@
 <p align="center">
   <img src="CellClaw_1.png" alt="CellClaw" width="300"/>
 </p>
-<p align="center">
-# CellClaw
-</p>
-**Autonomous AI assistant for Android.** CellClaw runs natively on your phone to do any task. No other hardware required.
 
-Built by and inspired by members of the Harvard, MIT, and Sundai.Club communities
-Additional inspiration from ZeroClaw
+<h1 align="center">CellClaw</h1>
+
+<p align="center">
+  <strong>Autonomous AI agent for Android. No other hardware required.</strong>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
+  <a href="https://github.com/jordanthejet/cellclaw/releases"><img src="https://img.shields.io/github/v/release/jordanthejet/cellclaw?include_prereleases" alt="GitHub release" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/jordanthejet/cellclaw/releases">Releases</a> ·
+  <a href="https://github.com/jordanthejet/cellclaw/issues">Issues</a> ·
+  <a href="LICENSE">License</a>
+</p>
+
+Built at [Sundai Club](https://sundai.club).
+
+CellClaw runs natively on your phone and can read your screen, send messages, make calls, control apps, take photos, and more — all orchestrated by an LLM through a tool-use loop with a heartbeat.
+
+```
+33 tools · 12 categories · 4 providers · Android 8.0+ · No middleman server
+```
+
+### Why CellClaw?
+
+- **No middleman** — no CellClaw server, your phone talks directly to your AI provider
+- **Bring your own model** — Claude, GPT, Gemini, or any OpenRouter model
+- **33 tools, zero scripts** — the AI figures out what to do from plain language
+- **Real Android control** — not just chat; it taps, swipes, types, launches apps, reads your screen
+- **You set the limits** — choose how autonomous the AI should be, approve sensitive actions
 
 ## What Can It Do?
 
@@ -136,6 +162,15 @@ Approvals show up in the chat and in the notification. You can tap **Approve**, 
 
 Switch providers and models anytime in Settings.
 
+## Privacy & Security
+
+- **API keys are encrypted** on-device using Android Keystore (AES-256-GCM). Never stored in plaintext.
+- **You control what the AI can do** via the autonomy level. Sensitive actions can require explicit approval.
+- **No CellClaw backend** — there is no CellClaw server. Your data goes directly from your phone to your chosen AI provider.
+- **Cloud inference** — screen content, messages, and prompts are sent to the AI provider's API for processing. Review your provider's privacy policy ([Anthropic](https://www.anthropic.com/privacy), [OpenAI](https://openai.com/privacy), [Google](https://ai.google.dev/terms)).
+- **Biometric gate** available for sensitive operations (fingerprint/face unlock).
+- **No telemetry, no analytics, no tracking** from CellClaw itself.
+
 ## Build from Source
 
 ```bash
@@ -156,7 +191,8 @@ cd cellclaw
 
 Physical device recommended — the accessibility service doesn't fully work on emulators.
 
-## Project Structure
+<details>
+<summary><strong>Project Structure</strong></summary>
 
 ```
 app/src/main/kotlin/com/cellclaw/
@@ -175,7 +211,11 @@ app/src/main/kotlin/com/cellclaw/
 └── wakeword/     # TensorFlow Lite wake word detection
 ```
 
-## Adding a Tool
+</details>
+
+## Contributing
+
+### Adding a Tool
 
 1. Create `tools/YourTool.kt`:
 ```kotlin
@@ -197,21 +237,34 @@ class YourTool @Inject constructor() : Tool {
 2. Register it in `di/AppModule.kt`
 3. Add to `AutonomyPolicy.kt` if it requires approval
 
-## Adding a Provider
+### Adding a Provider
 
 1. Create `provider/YourProvider.kt` implementing the `Provider` interface
 2. Handle request/response translation to the provider's API format
 3. Register in `ProviderManager`
 
-## Privacy & Security
+## Roadmap
 
-- **API keys are encrypted** on-device using Android Keystore (AES-256-GCM). Never stored in plaintext.
-- **You control what the AI can do** via the autonomy level. Sensitive actions can require explicit approval.
-- **Everything runs locally** — no CellClaw server. Your conversations go directly to your chosen AI provider.
-- **Biometric gate** available for sensitive operations (fingerprint/face unlock).
-- **No telemetry, no analytics, no tracking.**
+- [x] Android app with agent loop and 33 tools
+- [x] Multi-provider support (Anthropic, OpenAI, Google, OpenRouter)
+- [x] Heartbeat system for long-running tasks
+- [x] Wake word activation
+- [ ] On-device inference (local models)
+- [ ] iOS app
+- [ ] Skill sharing and community skill packs
+
+## See Also
+
+- [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) — lightweight Rust-based AI assistant infrastructure
 
 ## License
 
-MIT
+Apache 2.0 — see [LICENSE](LICENSE)
 
+## Star History
+
+<p align="center">
+  <a href="https://www.star-history.com/#JordanTheJet/cellclaw&Date">
+    <img src="https://api.star-history.com/svg?repos=JordanTheJet/cellclaw&type=Date" alt="Star History Chart" />
+  </a>
+</p>
