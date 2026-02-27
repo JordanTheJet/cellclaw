@@ -161,14 +161,6 @@ class CellClawService : Service() {
             .addRemoteInput(remoteInput)
             .build()
 
-        // Explain Screen action
-        val explainIntent = PendingIntent.getBroadcast(
-            this, 4,
-            Intent(this, NotificationActionReceiver::class.java).apply {
-                action = NotificationActionReceiver.ACTION_SCREENSHOT_EXPLAIN
-            },
-            PendingIntent.FLAG_IMMUTABLE
-        )
 
         val builder = NotificationCompat.Builder(this, CellClawApp.CHANNEL_SERVICE)
             .setContentTitle("CellClaw")
@@ -200,7 +192,6 @@ class CellClawService : Service() {
         } else {
             builder.addAction(0, "Stop", stopIntent)
             builder.addAction(0, if (isPaused) "Resume" else "Pause", toggleAction)
-            builder.addAction(0, "Explain Screen", explainIntent)
         }
         builder.addAction(replyAction)
 

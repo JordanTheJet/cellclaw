@@ -147,7 +147,6 @@ Approvals show up in the chat and in the notification. You can tap **Approve**, 
 - **Chat screen** — Full conversation interface with tool execution status
 - **Floating overlay** — Tap the bubble for quick questions without leaving your current app
 - **Notification reply** — Reply directly from the persistent notification
-- **"Explain Screen" button** — One-tap screenshot + AI explanation from the notification
 - **Quick Settings tile** — Toggle CellClaw from the notification shade
 - **Wake word** — Hands-free activation (requires microphone permission)
 

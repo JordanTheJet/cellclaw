@@ -602,49 +602,6 @@ class OverlayService : Service() {
         stopSelf()
     }
 
-    // ── Explain Screen ───────────────────────────────────────────────────
-
-    private fun handleExplainScreen() {
-        serviceScope?.launch {
-            try {
-                val captureResult = screenCaptureTool.execute(
-                    buildJsonObject { put("include_base64", false) }
-                )
-                if (!captureResult.success) return@launch
-
-                val filePath = captureResult.data?.let { data ->
-                    (data as? JsonObject)?.get("file_path")
-                        ?.let { (it as? JsonPrimitive)?.content }
-                } ?: return@launch
-
-                val analyzeResult = visionAnalyzeTool.execute(buildJsonObject {
-                    put("file_path", filePath)
-                    put("question", "Describe what you see on the screen. What app is open? What is the user looking at?")
-                })
-
-                if (analyzeResult.success) {
-                    val analysis = analyzeResult.data?.let { data ->
-                        (data as? JsonObject)?.get("analysis")
-                            ?.let { (it as? JsonPrimitive)?.content }
-                    } ?: "Analysis complete"
-                    postResultNotification(analysis)
-                }
-            } catch (_: Exception) {}
-        }
-    }
-
-    private fun postResultNotification(text: String) {
-        val notification = NotificationCompat.Builder(this, CellClawApp.CHANNEL_ALERTS)
-            .setContentTitle("Screen Analysis")
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setSmallIcon(R.drawable.ic_notification)
-            .setAutoCancel(true)
-            .build()
-
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(EXPLAIN_NOTIFICATION_ID, notification)
-    }
 
     // ── State observation ────────────────────────────────────────────────
 
@@ -723,6 +680,5 @@ class OverlayService : Service() {
     companion object {
         private const val TAG = "OverlayService"
         const val OVERLAY_NOTIFICATION_ID = 2
-        private const val EXPLAIN_NOTIFICATION_ID = 101
     }
 }
