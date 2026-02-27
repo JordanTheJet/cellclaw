@@ -72,7 +72,7 @@ class AppConfig @Inject constructor(
 
     /** Whether to poll even when there's no active task context. */
     var heartbeatAlwaysPoll: Boolean
-        get() = prefs.getBoolean("heartbeat_always_poll", true)
+        get() = prefs.getBoolean("heartbeat_always_poll", false)
         set(value) = prefs.edit().putBoolean("heartbeat_always_poll", value).apply()
 
     /** Allow CellClaw to install apps from Play Store. Default on in Full Auto. */
