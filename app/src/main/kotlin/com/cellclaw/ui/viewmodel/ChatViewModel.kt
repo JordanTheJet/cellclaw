@@ -90,6 +90,9 @@ class ChatViewModel @Inject constructor(
                             addMessage("assistant", note)
                         }
                     }
+                    is AgentEvent.ProviderFailover -> addMessage(
+                        "tool", "Switched from ${event.fromProvider} to ${event.toProvider}: ${event.reason}"
+                    )
                 }
             }
         }
