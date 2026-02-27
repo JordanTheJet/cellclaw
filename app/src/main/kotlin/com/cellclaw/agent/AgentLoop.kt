@@ -57,7 +57,14 @@ class AgentLoop @Inject constructor(
                 conversationHistory.add(Message.user(text))
                 conversationStore.addMessage("user", text)
                 _events.emit(AgentEvent.UserMessage(text))
-                runAgentLoop()
+                val result = runAgentLoop()
+
+                // Auto-activate heartbeat monitoring after any action-producing run
+                if (result.hadToolCalls) {
+                    val taskSummary = text.trim().take(120)
+                    heartbeatManagerProvider.get().setActiveTaskContext(taskSummary)
+                    Log.d(TAG, "Auto-activated heartbeat for: $taskSummary")
+                }
             } catch (e: CancellationException) {
                 _state.value = AgentState.IDLE
             } catch (e: Exception) {
@@ -116,7 +123,9 @@ class AgentLoop @Inject constructor(
         }
     }
 
-    private suspend fun runAgentLoop() {
+    private data class LoopResult(val hadToolCalls: Boolean, val iterations: Int)
+
+    private suspend fun runAgentLoop(): LoopResult {
         var iterations = 0
         val maxIterations = appConfig.maxIterations
         var hadToolCallsThisRun = false
@@ -188,7 +197,7 @@ class AgentLoop @Inject constructor(
                     heartbeatManagerProvider.get().onHeartbeatResult(detection.heartbeatResult)
                 }
                 _state.value = AgentState.IDLE
-                return
+                return LoopResult(hadToolCallsThisRun, iterations)
             }
 
             // Execute tool calls
@@ -258,6 +267,7 @@ class AgentLoop @Inject constructor(
             }
             _state.value = AgentState.IDLE
         }
+        return LoopResult(hadToolCallsThisRun, iterations)
     }
 
     /**

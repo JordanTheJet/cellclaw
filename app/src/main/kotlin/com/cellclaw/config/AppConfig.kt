@@ -50,7 +50,7 @@ class AppConfig @Inject constructor(
         set(value) = prefs.edit().putBoolean("auto_speak_responses", value).apply()
 
     var overlayEnabled: Boolean
-        get() = prefs.getBoolean("overlay_enabled", false)
+        get() = prefs.getBoolean("overlay_enabled", true)
         set(value) = prefs.edit().putBoolean("overlay_enabled", value).apply()
 
     /** Max agent loop iterations. 0 = unlimited. */
@@ -72,8 +72,13 @@ class AppConfig @Inject constructor(
 
     /** Whether to poll even when there's no active task context. */
     var heartbeatAlwaysPoll: Boolean
-        get() = prefs.getBoolean("heartbeat_always_poll", false)
+        get() = prefs.getBoolean("heartbeat_always_poll", true)
         set(value) = prefs.edit().putBoolean("heartbeat_always_poll", value).apply()
+
+    /** Allow CellClaw to install apps from Play Store. Default on in Full Auto. */
+    var autoInstallApps: Boolean
+        get() = prefs.getBoolean("auto_install_apps", true)
+        set(value) = prefs.edit().putBoolean("auto_install_apps", value).apply()
 
     /** App access mode: "all_on", "smart", or "all_off". */
     var appAccessMode: String

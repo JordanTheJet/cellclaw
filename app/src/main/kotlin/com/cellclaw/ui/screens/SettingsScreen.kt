@@ -57,6 +57,7 @@ fun SettingsScreen(
     val overlayEnabled by viewModel.overlayEnabled.collectAsState()
     val maxIterations by viewModel.maxIterations.collectAsState()
     val wakeWordEnabled by viewModel.wakeWordEnabled.collectAsState()
+    val autoInstallApps by viewModel.autoInstallApps.collectAsState()
     val context = LocalContext.current
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -263,6 +264,27 @@ fun SettingsScreen(
                                 Text("Save")
                             }
                         }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Allow app installation", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Let CellClaw install apps from the Play Store when needed",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = autoInstallApps,
+                            onCheckedChange = { viewModel.setAutoInstallApps(it) }
+                        )
                     }
                 }
             }

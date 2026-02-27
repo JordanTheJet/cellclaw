@@ -60,6 +60,9 @@ class SettingsViewModel @Inject constructor(
     private val _wakeWordEnabled = MutableStateFlow(appConfig.wakeWordEnabled)
     val wakeWordEnabled: StateFlow<Boolean> = _wakeWordEnabled.asStateFlow()
 
+    private val _autoInstallApps = MutableStateFlow(appConfig.autoInstallApps)
+    val autoInstallApps: StateFlow<Boolean> = _autoInstallApps.asStateFlow()
+
     private val _availableModels = MutableStateFlow(modelsForProvider(_activeProvider.value))
     val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
 
@@ -133,11 +136,20 @@ class SettingsViewModel @Inject constructor(
         _wakeWordEnabled.value = enabled
     }
 
+    fun setAutoInstallApps(enabled: Boolean) {
+        appConfig.autoInstallApps = enabled
+        _autoInstallApps.value = enabled
+    }
+
     fun setPermissionProfile(profile: PermissionProfile) {
         appConfig.permissionProfile = profile.name
         autonomyPolicy.applyProfile(profile)
         _permissionProfile.value = profile
         _policies.value = autonomyPolicy.allPolicies()
+        // Sync auto-install: on for Full Auto, off for others
+        val install = profile == PermissionProfile.FULL_AUTO
+        appConfig.autoInstallApps = install
+        _autoInstallApps.value = install
     }
 
     fun togglePolicy(toolName: String) {

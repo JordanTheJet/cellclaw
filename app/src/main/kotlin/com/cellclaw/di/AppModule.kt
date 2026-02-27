@@ -92,7 +92,8 @@ object AppModule {
         messagingOpen: MessagingOpenTool,
         messagingRead: MessagingReadTool,
         messagingReply: MessagingReplyTool,
-        heartbeatContext: HeartbeatContextTool
+        heartbeatContext: HeartbeatContextTool,
+        appInstall: AppInstallTool
     ): ToolRegistry {
         return ToolRegistry().apply {
             register(
@@ -115,7 +116,8 @@ object AppModule {
                 notificationListen,
                 schedulerTool,
                 messagingOpen, messagingRead, messagingReply,
-                heartbeatContext
+                heartbeatContext,
+                appInstall
             )
         }
     }
