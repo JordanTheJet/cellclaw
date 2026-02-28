@@ -57,9 +57,6 @@ class SettingsViewModel @Inject constructor(
     private val _maxIterations = MutableStateFlow(appConfig.maxIterations)
     val maxIterations: StateFlow<Int> = _maxIterations.asStateFlow()
 
-    private val _wakeWordEnabled = MutableStateFlow(appConfig.wakeWordEnabled)
-    val wakeWordEnabled: StateFlow<Boolean> = _wakeWordEnabled.asStateFlow()
-
     private val _autoInstallApps = MutableStateFlow(appConfig.autoInstallApps)
     val autoInstallApps: StateFlow<Boolean> = _autoInstallApps.asStateFlow()
 
@@ -129,11 +126,6 @@ class SettingsViewModel @Inject constructor(
     fun setMaxIterations(value: Int) {
         appConfig.maxIterations = value
         _maxIterations.value = value
-    }
-
-    fun setWakeWordEnabled(enabled: Boolean) {
-        appConfig.wakeWordEnabled = enabled
-        _wakeWordEnabled.value = enabled
     }
 
     fun setAutoInstallApps(enabled: Boolean) {

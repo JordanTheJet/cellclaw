@@ -52,22 +52,12 @@ class CellClawApp : Application(), Configuration.Provider {
             description = "General alerts and notifications"
         }
 
-        val wakeWordChannel = NotificationChannel(
-            CHANNEL_WAKE_WORD,
-            getString(R.string.notification_channel_wake_word),
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "Wake word detection status"
-            setShowBadge(false)
-        }
-
-        manager.createNotificationChannels(listOf(serviceChannel, approvalChannel, alertChannel, wakeWordChannel))
+        manager.createNotificationChannels(listOf(serviceChannel, approvalChannel, alertChannel))
     }
 
     companion object {
         const val CHANNEL_SERVICE = "cellclaw_service"
         const val CHANNEL_APPROVALS = "cellclaw_approvals"
         const val CHANNEL_ALERTS = "cellclaw_alerts"
-        const val CHANNEL_WAKE_WORD = "cellclaw_wake_word"
     }
 }

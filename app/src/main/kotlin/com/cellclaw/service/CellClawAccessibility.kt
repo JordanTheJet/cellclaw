@@ -132,6 +132,7 @@ class CellClawAccessibility : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        Log.d(TAG, "onKeyEvent: keyCode=${event.keyCode} action=${event.action}")
         if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN && event.action == KeyEvent.ACTION_DOWN) {
             val now = System.currentTimeMillis()
             if (now - lastVolumeDownTime < DOUBLE_TAP_MS) {
@@ -147,10 +148,9 @@ class CellClawAccessibility : AccessibilityService() {
     }
 
     private fun triggerVoiceActivation() {
-        val intent = Intent(this, com.cellclaw.wakeword.WakeWordService::class.java).apply {
-            action = com.cellclaw.wakeword.WakeWordService.ACTION_ACTIVATE
-        }
-        startService(intent)
+        sendBroadcast(Intent(com.cellclaw.voice.VoiceActivationHandler.ACTION_ACTIVATE).apply {
+            setPackage(packageName)
+        })
     }
 
     override fun onDestroy() {

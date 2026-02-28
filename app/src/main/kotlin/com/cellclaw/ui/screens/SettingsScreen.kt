@@ -1,18 +1,15 @@
 package com.cellclaw.ui.screens
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -34,9 +31,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cellclaw.agent.PermissionProfile
 import com.cellclaw.agent.ToolApprovalPolicy
 import com.cellclaw.service.overlay.OverlayService
+import com.cellclaw.ui.components.PermissionRow
+import com.cellclaw.ui.components.isAccessibilityEnabled
+import com.cellclaw.ui.components.isNotificationListenerEnabled
+import com.cellclaw.ui.components.openAccessibilitySettings
 import com.cellclaw.ui.viewmodel.SettingsViewModel
-import com.cellclaw.wakeword.WakeWordService
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -56,23 +55,24 @@ fun SettingsScreen(
     val autoSpeakResponses by viewModel.autoSpeakResponses.collectAsState()
     val overlayEnabled by viewModel.overlayEnabled.collectAsState()
     val maxIterations by viewModel.maxIterations.collectAsState()
-    val wakeWordEnabled by viewModel.wakeWordEnabled.collectAsState()
     val autoInstallApps by viewModel.autoInstallApps.collectAsState()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    val micPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            viewModel.setWakeWordEnabled(true)
-            context.startForegroundService(
-                Intent(context, WakeWordService::class.java).apply {
-                    action = WakeWordService.ACTION_START
-                }
-            )
-        } else {
-            Toast.makeText(context, "Microphone permission required for wake word", Toast.LENGTH_SHORT).show()
+    // Permission status tracking
+    var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var accessibilityGranted by remember { mutableStateOf(isAccessibilityEnabled(context)) }
+    var notifListenerGranted by remember { mutableStateOf(isNotificationListenerEnabled(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                overlayGranted = Settings.canDrawOverlays(context)
+                accessibilityGranted = isAccessibilityEnabled(context)
+                notifListenerGranted = isNotificationListenerEnabled(context)
+            }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -306,6 +306,46 @@ fun SettingsScreen(
                 }
             }
 
+            // Permissions section
+            Text("Permissions", style = MaterialTheme.typography.titleMedium)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    PermissionRow(
+                        title = "Display over other apps",
+                        description = "Required for the floating bubble overlay",
+                        granted = overlayGranted,
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                            )
+                        }
+                    )
+                    PermissionRow(
+                        title = "Accessibility service",
+                        description = "Required for screen reading and app automation",
+                        granted = accessibilityGranted,
+                        onClick = { openAccessibilitySettings(context) }
+                    )
+                    PermissionRow(
+                        title = "Notification listener",
+                        description = "Required to read and act on notifications",
+                        granted = notifListenerGranted,
+                        onClick = {
+                            context.startActivity(
+                                Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    )
+                }
+            }
+
             // Overlay section
             Text("Overlay", style = MaterialTheme.typography.titleMedium)
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -380,62 +420,6 @@ fun SettingsScreen(
                         Switch(
                             checked = autoSpeakResponses,
                             onCheckedChange = { viewModel.setAutoSpeakResponses(it) }
-                        )
-                    }
-                }
-            }
-
-            // Wake Word section
-            Text("Wake Word", style = MaterialTheme.typography.titleMedium)
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Enable wake word")
-                            Text(
-                                "Say \"CellClaw\" to activate voice commands",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = wakeWordEnabled,
-                            onCheckedChange = { enabled ->
-                                if (enabled) {
-                                    val hasMic = ContextCompat.checkSelfPermission(
-                                        context, Manifest.permission.RECORD_AUDIO
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                    if (hasMic) {
-                                        viewModel.setWakeWordEnabled(true)
-                                        context.startForegroundService(
-                                            Intent(context, WakeWordService::class.java).apply {
-                                                action = WakeWordService.ACTION_START
-                                            }
-                                        )
-                                    } else {
-                                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    }
-                                } else {
-                                    viewModel.setWakeWordEnabled(false)
-                                    context.startService(
-                                        Intent(context, WakeWordService::class.java).apply {
-                                            action = WakeWordService.ACTION_STOP
-                                        }
-                                    )
-                                }
-                            }
-                        )
-                    }
-                    if (wakeWordEnabled) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Wake word detection uses continuous microphone access and may increase battery usage.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
                         )
                     }
                 }

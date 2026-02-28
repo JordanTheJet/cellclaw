@@ -31,6 +31,10 @@ import com.cellclaw.approval.ApprovalQueue
 import com.cellclaw.approval.ApprovalResult
 import com.cellclaw.tools.ScreenCaptureTool
 import com.cellclaw.tools.VisionAnalyzeTool
+import com.cellclaw.voice.ListeningPhase
+import com.cellclaw.voice.VoiceListeningState
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.util.Log
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -49,6 +53,7 @@ class OverlayService : Service() {
     @Inject lateinit var screenCaptureTool: ScreenCaptureTool
     @Inject lateinit var visionAnalyzeTool: VisionAnalyzeTool
     @Inject lateinit var visibilityController: OverlayVisibilityController
+    @Inject lateinit var voiceListeningState: VoiceListeningState
 
     private lateinit var windowManager: WindowManager
     private var bubbleView: ImageView? = null
@@ -82,6 +87,15 @@ class OverlayService : Service() {
     private var responseVisible = false
     private var responseFadeJob: Job? = null
 
+    // Voice listening overlay
+    private var voiceOverlay: LinearLayout? = null
+    private var voiceMicIcon: View? = null
+    private var voiceStatusText: TextView? = null
+    private var voiceTranscriptText: TextView? = null
+    private lateinit var voiceOverlayParams: WindowManager.LayoutParams
+    private var voiceOverlayVisible = false
+    private var micPulseAnimator: ObjectAnimator? = null
+
     // Panel child views for dynamic updates
     private var approveBtn: TextView? = null
     private var denyBtn: TextView? = null
@@ -96,8 +110,10 @@ class OverlayService : Service() {
         createStatusView()
         createResponseCard()
         createPanel()
+        createVoiceOverlay()
         observeState()
         observeVisibility()
+        observeVoiceListeningState()
     }
 
     override fun onDestroy() {
@@ -109,6 +125,7 @@ class OverlayService : Service() {
         backdropView?.let { if (panelVisible) windowManager.removeView(it) }
         statusView?.let { if (statusVisible) windowManager.removeView(it) }
         responseCard?.let { if (responseVisible) windowManager.removeView(it) }
+        hideVoiceOverlay()
         bubbleView = null
         panelView = null
         backdropView = null
@@ -139,6 +156,7 @@ class OverlayService : Service() {
             if (panelVisible) panelView?.visibility = View.INVISIBLE
             if (panelVisible) backdropView?.visibility = View.INVISIBLE
             if (responseVisible) responseCard?.visibility = View.INVISIBLE
+            if (voiceOverlayVisible) voiceOverlay?.visibility = View.INVISIBLE
             if (stopButtonVisible) {
                 stopButtonView?.visibility = View.INVISIBLE
                 stopBackdropView?.visibility = View.INVISIBLE
@@ -158,6 +176,7 @@ class OverlayService : Service() {
             if (panelVisible) panelView?.visibility = View.VISIBLE
             if (panelVisible) backdropView?.visibility = View.VISIBLE
             if (responseVisible) responseCard?.visibility = View.VISIBLE
+            if (voiceOverlayVisible) voiceOverlay?.visibility = View.VISIBLE
             if (stopButtonVisible) {
                 stopButtonView?.visibility = View.VISIBLE
                 stopBackdropView?.visibility = View.VISIBLE
@@ -601,6 +620,145 @@ class OverlayService : Service() {
     }
 
 
+    // ── Voice listening overlay ────────────────────────────────────────────
+
+    private fun createVoiceOverlay() {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#E61E1E2E"))
+                cornerRadius = dpToPx(16).toFloat()
+            }
+            background = bg
+            setPadding(dpToPx(20), dpToPx(16), dpToPx(20), dpToPx(16))
+        }
+
+        // Pulsing mic circle
+        val micSize = dpToPx(48)
+        val mic = View(this).apply {
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#7C4DFF"))
+            }
+            background = bg
+        }
+        val micLp = LinearLayout.LayoutParams(micSize, micSize).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        panel.addView(mic, micLp)
+        voiceMicIcon = mic
+
+        // Status text
+        val status = TextView(this).apply {
+            text = "Listening..."
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            gravity = Gravity.CENTER
+        }
+        val statusLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = dpToPx(10)
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        panel.addView(status, statusLp)
+        voiceStatusText = status
+
+        // Transcript text
+        val transcript = TextView(this).apply {
+            setTextColor(Color.parseColor("#AAAAAA"))
+            textSize = 14f
+            gravity = Gravity.CENTER
+            maxLines = 3
+        }
+        val transcriptLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = dpToPx(6)
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        panel.addView(transcript, transcriptLp)
+        voiceTranscriptText = transcript
+
+        voiceOverlayParams = WindowManager.LayoutParams(
+            dpToPx(280),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = dpToPx(100)
+        }
+
+        voiceOverlay = panel
+    }
+
+    private fun showVoiceOverlay() {
+        if (!voiceOverlayVisible) {
+            voiceOverlay?.let { windowManager.addView(it, voiceOverlayParams) }
+            voiceOverlayVisible = true
+            startMicPulse()
+        }
+        if (overlayHidden) voiceOverlay?.visibility = View.INVISIBLE
+    }
+
+    private fun hideVoiceOverlay() {
+        micPulseAnimator?.cancel()
+        micPulseAnimator = null
+        if (voiceOverlayVisible) {
+            voiceOverlay?.let { windowManager.removeView(it) }
+            voiceOverlayVisible = false
+        }
+    }
+
+    private fun startMicPulse() {
+        voiceMicIcon?.let { mic ->
+            micPulseAnimator = ObjectAnimator.ofFloat(mic, "alpha", 1f, 0.4f).apply {
+                duration = 600
+                repeatMode = ValueAnimator.REVERSE
+                repeatCount = ValueAnimator.INFINITE
+                start()
+            }
+        }
+    }
+
+    private fun observeVoiceListeningState() {
+        serviceScope?.launch {
+            voiceListeningState.phase.collect { phase ->
+                when (phase) {
+                    ListeningPhase.ACTIVATED -> {
+                        voiceStatusText?.text = "Activated"
+                        voiceTranscriptText?.text = ""
+                        showVoiceOverlay()
+                    }
+                    ListeningPhase.LISTENING -> {
+                        voiceStatusText?.text = "Listening..."
+                    }
+                    ListeningPhase.PROCESSING -> {
+                        voiceStatusText?.text = "Processing..."
+                        micPulseAnimator?.cancel()
+                        voiceMicIcon?.alpha = 1f
+                    }
+                    ListeningPhase.IDLE -> {
+                        hideVoiceOverlay()
+                    }
+                }
+            }
+        }
+        serviceScope?.launch {
+            voiceListeningState.displayText.collect { text ->
+                if (text.isNotBlank()) {
+                    voiceTranscriptText?.text = text
+                }
+            }
+        }
+    }
+
     // ── State observation ────────────────────────────────────────────────
 
     private fun observeState() {
@@ -680,6 +838,6 @@ class OverlayService : Service() {
 
     companion object {
         private const val TAG = "OverlayService"
-        const val OVERLAY_NOTIFICATION_ID = 2
+        const val OVERLAY_NOTIFICATION_ID = 3
     }
 }

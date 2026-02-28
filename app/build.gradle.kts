@@ -59,9 +59,6 @@ android {
         buildConfig = true
     }
 
-    aaptOptions {
-        noCompress("tflite")
-    }
 }
 
 tasks.register("enableAccessibility") {
@@ -138,9 +135,6 @@ dependencies {
 
     // Location
     implementation(libs.location)
-
-    // TensorFlow Lite
-    implementation(libs.tensorflow.lite)
 
     // AndroidX Core
     implementation(libs.core.ktx)

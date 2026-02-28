@@ -31,6 +31,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.cellclaw.agent.PermissionProfile
+import com.cellclaw.ui.components.PermissionRow
+import com.cellclaw.ui.components.isAccessibilityEnabled
+import com.cellclaw.ui.components.isNotificationListenerEnabled
+import com.cellclaw.ui.components.openAccessibilitySettings
 import com.cellclaw.ui.viewmodel.SetupViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -397,94 +401,4 @@ fun SetupScreen(
     }
 }
 
-@Composable
-private fun PermissionRow(
-    title: String,
-    description: String,
-    granted: Boolean,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !granted, onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (granted)
-                MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (granted) {
-                Icon(
-                    Icons.Default.Check,
-                    contentDescription = "Granted",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            } else {
-                TextButton(onClick = onClick) { Text("Grant") }
-            }
-        }
-    }
-}
-
-private fun openAccessibilitySettings(context: android.content.Context) {
-    val componentName = ComponentName(context, "com.cellclaw.service.CellClawAccessibility")
-
-    // Try direct detail page first (AOSP API 36+), catch if OEM doesn't support it
-    if (Build.VERSION.SDK_INT >= 36) {
-        try {
-            context.startActivity(
-                Intent("android.settings.ACCESSIBILITY_DETAIL_SETTINGS").apply {
-                    putExtra(Intent.EXTRA_COMPONENT_NAME, componentName.flattenToString())
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            )
-            return
-        } catch (_: Exception) { /* OEM doesn't support, fall through */ }
-    }
-
-    // Fallback: generic accessibility settings
-    context.startActivity(
-        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-    )
-}
-
-private fun isNotificationListenerEnabled(context: android.content.Context): Boolean {
-    val expectedComponent = ComponentName(context, "com.cellclaw.service.CellClawNotificationListener")
-    val flat = Settings.Secure.getString(
-        context.contentResolver,
-        "enabled_notification_listeners"
-    ) ?: return false
-    return flat.split(':').any {
-        ComponentName.unflattenFromString(it) == expectedComponent
-    }
-}
-
-private fun isAccessibilityEnabled(context: android.content.Context): Boolean {
-    val expectedComponent = ComponentName(context, "com.cellclaw.service.CellClawAccessibility")
-    val enabledServices = Settings.Secure.getString(
-        context.contentResolver,
-        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-    ) ?: return false
-    return enabledServices.split(':').any {
-        ComponentName.unflattenFromString(it) == expectedComponent
-    }
-}
 

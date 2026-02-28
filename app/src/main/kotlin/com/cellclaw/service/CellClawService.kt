@@ -17,6 +17,7 @@ import com.cellclaw.agent.HeartbeatState
 import com.cellclaw.approval.ApprovalQueue
 import com.cellclaw.service.receivers.NotificationActionReceiver
 import com.cellclaw.ui.MainActivity
+import com.cellclaw.voice.ShakeDetector
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
@@ -28,6 +29,7 @@ class CellClawService : Service() {
     @Inject lateinit var agentLoop: AgentLoop
     @Inject lateinit var approvalQueue: ApprovalQueue
     @Inject lateinit var heartbeatManager: HeartbeatManager
+    @Inject lateinit var shakeDetector: ShakeDetector
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var serviceScope: CoroutineScope? = null
@@ -46,9 +48,11 @@ class CellClawService : Service() {
                 agentLoop.loadHistory()
                 observeState()
                 heartbeatManager.start(wakeLock)
+                shakeDetector.start()
             }
             ACTION_STOP -> {
                 heartbeatManager.stop()
+                shakeDetector.stop()
                 agentLoop.stop()
                 serviceScope?.cancel()
                 serviceScope = null
@@ -67,6 +71,7 @@ class CellClawService : Service() {
 
     override fun onDestroy() {
         heartbeatManager.stop()
+        shakeDetector.stop()
         serviceScope?.cancel()
         serviceScope = null
         releaseWakeLock()

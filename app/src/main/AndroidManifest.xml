@@ -45,7 +45,6 @@
     <!-- Foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -60,6 +59,7 @@
 
     <!-- Voice -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Package visibility (needed to launch any app by package name on Android 11+) -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
@@ -121,12 +121,6 @@
                 android:name="android.service.quicksettings.ACTIVE_TILE"
                 android:value="true" />
         </service>
-
-        <!-- Wake Word Service -->
-        <service
-            android:name=".wakeword.WakeWordService"
-            android:exported="false"
-            android:foregroundServiceType="microphone" />
 
         <!-- Overlay Service -->
         <service

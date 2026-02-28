@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -41,15 +42,22 @@ class SecureKeyStore @Inject constructor(
         val encryptedB64 = prefs.getString("${provider}_key", null) ?: return null
         val ivB64 = prefs.getString("${provider}_iv", null) ?: return null
 
-        val encrypted = Base64.decode(encryptedB64, Base64.DEFAULT)
-        val iv = Base64.decode(ivB64, Base64.DEFAULT)
+        return try {
+            val encrypted = Base64.decode(encryptedB64, Base64.DEFAULT)
+            val iv = Base64.decode(ivB64, Base64.DEFAULT)
 
-        val secretKey = getOrCreateKey(provider)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            val secretKey = getOrCreateKey(provider)
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
 
-        val decrypted = cipher.doFinal(encrypted)
-        return String(decrypted, Charsets.UTF_8)
+            val decrypted = cipher.doFinal(encrypted)
+            String(decrypted, Charsets.UTF_8)
+        } catch (e: Exception) {
+            // Keystore key invalidated (e.g. after reinstall) — clear corrupted data
+            Log.w(TAG, "Failed to decrypt API key for $provider, clearing: ${e.message}")
+            deleteApiKey(provider)
+            null
+        }
     }
 
     fun hasApiKey(provider: String): Boolean {
@@ -89,6 +97,7 @@ class SecureKeyStore @Inject constructor(
     private fun keyAlias(provider: String) = "cellclaw_${provider}_key"
 
     companion object {
+        private const val TAG = "SecureKeyStore"
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_LENGTH = 128

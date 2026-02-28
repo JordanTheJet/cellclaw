@@ -62,10 +62,6 @@ class AppConfig @Inject constructor(
         get() = prefs.getString("permission_profile", "FULL_AUTO") ?: "FULL_AUTO"
         set(value) = prefs.edit().putString("permission_profile", value).apply()
 
-    var wakeWordEnabled: Boolean
-        get() = prefs.getBoolean("wake_word_enabled", false)
-        set(value) = prefs.edit().putBoolean("wake_word_enabled", value).apply()
-
     var heartbeatEnabled: Boolean
         get() = prefs.getBoolean("heartbeat_enabled", true)
         set(value) = prefs.edit().putBoolean("heartbeat_enabled", value).apply()

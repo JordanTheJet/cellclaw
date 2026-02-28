@@ -34,6 +34,13 @@ class VoiceManager @Inject constructor(
     private val _recognizedText = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val recognizedText: SharedFlow<String> = _recognizedText.asSharedFlow()
 
+    // Emits when recognition ends without results (error or no match)
+    private val _recognitionFailed = MutableSharedFlow<Int>(extraBufferCapacity = 8)
+    val recognitionFailed: SharedFlow<Int> = _recognitionFailed.asSharedFlow()
+
+    private val _partialText = MutableStateFlow("")
+    val partialText: StateFlow<String> = _partialText.asStateFlow()
+
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
@@ -68,6 +75,7 @@ class VoiceManager @Inject constructor(
 
     fun startListening() {
         if (_isListening.value) return
+        _partialText.value = ""
 
         try {
             speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
@@ -85,17 +93,25 @@ class VoiceManager @Inject constructor(
                 override fun onError(error: Int) {
                     _isListening.value = false
                     Log.w(TAG, "Recognition error: $error")
+                    _recognitionFailed.tryEmit(error)
                 }
                 override fun onResults(results: Bundle?) {
                     _isListening.value = false
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull()
                     if (!text.isNullOrBlank()) {
+                        _partialText.value = text
                         _recognizedText.tryEmit(text)
                         Log.d(TAG, "Recognized: $text")
                     }
                 }
-                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    val text = matches?.firstOrNull()
+                    if (!text.isNullOrBlank()) {
+                        _partialText.value = text
+                    }
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
 
@@ -103,6 +119,7 @@ class VoiceManager @Inject constructor(
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             }
             speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
@@ -115,6 +132,7 @@ class VoiceManager @Inject constructor(
         try {
             speechRecognizer?.stopListening()
             _isListening.value = false
+            _partialText.value = ""
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop listening: ${e.message}")
         }
@@ -141,6 +159,7 @@ class VoiceManager @Inject constructor(
         tts = null
         _isListening.value = false
         _isSpeaking.value = false
+        _partialText.value = ""
     }
 
     companion object {

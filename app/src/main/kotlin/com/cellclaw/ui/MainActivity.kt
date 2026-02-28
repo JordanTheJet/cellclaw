@@ -19,6 +19,8 @@ import com.cellclaw.service.CellClawService
 import com.cellclaw.service.overlay.OverlayService
 import com.cellclaw.ui.screens.*
 import com.cellclaw.ui.theme.CellClawTheme
+import com.cellclaw.voice.ShakeDetector
+import com.cellclaw.voice.VoiceActivationHandler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -27,6 +29,8 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var appConfig: AppConfig
     @Inject lateinit var providerManager: ProviderManager
+    @Inject lateinit var voiceActivationHandler: VoiceActivationHandler
+    @Inject lateinit var shakeDetector: ShakeDetector
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +47,8 @@ class MainActivity : ComponentActivity() {
             if (appConfig.overlayEnabled && Settings.canDrawOverlays(this)) {
                 startForegroundService(Intent(this, OverlayService::class.java))
             }
+            // Register hotkey voice activation listener
+            voiceActivationHandler.register()
         }
 
         val pendingMessage = intent?.getStringExtra("message")

@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -34,6 +33,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cellclaw.approval.ApprovalResult
+import com.cellclaw.ui.components.isAccessibilityEnabled
+import com.cellclaw.ui.components.isNotificationListenerEnabled
 import com.cellclaw.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -62,18 +63,16 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // Poll accessibility service status via system API (works cross-process)
-    var accessibilityConnected by remember { mutableStateOf(false) }
+    // Poll permission status via Settings.Secure (reliable cross-process)
+    var accessibilityConnected by remember { mutableStateOf(isAccessibilityEnabled(context)) }
+    var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var notifListenerEnabled by remember { mutableStateOf(isNotificationListenerEnabled(context)) }
     LaunchedEffect(Unit) {
-        val am = context.getSystemService(AccessibilityManager::class.java)
         while (true) {
-            val enabled = am.getEnabledAccessibilityServiceList(
-                android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
-            )
-            accessibilityConnected = enabled.any {
-                it.id?.contains("com.cellclaw") == true
-            }
             delay(2_000)
+            accessibilityConnected = isAccessibilityEnabled(context)
+            overlayGranted = Settings.canDrawOverlays(context)
+            notifListenerEnabled = isNotificationListenerEnabled(context)
         }
     }
 
@@ -107,11 +106,6 @@ fun ChatScreen(
                 .padding(padding)
         ) {
             // Notification listener warning
-            val notifListenerEnabled = remember(accessibilityConnected) {
-                val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: ""
-                val component = ComponentName(context, "com.cellclaw.service.CellClawNotificationListener").flattenToString()
-                flat.contains(component)
-            }
             if (!notifListenerEnabled) {
                 Surface(
                     color = MaterialTheme.colorScheme.tertiaryContainer,
@@ -147,13 +141,6 @@ fun ChatScreen(
             }
 
             // Overlay permission warning
-            var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
-            LaunchedEffect(Unit) {
-                while (true) {
-                    delay(2_000)
-                    overlayGranted = Settings.canDrawOverlays(context)
-                }
-            }
             if (!overlayGranted) {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
