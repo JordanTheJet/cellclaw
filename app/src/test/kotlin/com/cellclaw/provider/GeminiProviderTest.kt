@@ -13,7 +13,7 @@ class GeminiProviderTest {
 
     @Test
     fun `default model is gemini-2-5-flash`() {
-        assertEquals("gemini-2.5-flash", GeminiProvider.DEFAULT_MODEL)
+        assertEquals("gemini-3-flash-preview", GeminiProvider.DEFAULT_MODEL)
     }
 
     @Test

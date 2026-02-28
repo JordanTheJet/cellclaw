@@ -18,25 +18,25 @@ class ProviderManagerTest {
 
     @Test
     fun `anthropic defaults`() {
-        assertEquals("claude-sonnet-4-20250514", AnthropicProvider.DEFAULT_MODEL)
+        assertEquals("claude-sonnet-4-6", AnthropicProvider.DEFAULT_MODEL)
         assertTrue(AnthropicProvider.API_URL.contains("anthropic.com"))
     }
 
     @Test
     fun `openai defaults`() {
-        assertEquals("gpt-4o", OpenAIProvider.DEFAULT_MODEL)
+        assertEquals("gpt-5.2", OpenAIProvider.DEFAULT_MODEL)
         assertTrue(OpenAIProvider.API_URL.contains("openai.com"))
     }
 
     @Test
     fun `gemini defaults`() {
-        assertEquals("gemini-2.5-flash", GeminiProvider.DEFAULT_MODEL)
+        assertEquals("gemini-3-flash-preview", GeminiProvider.DEFAULT_MODEL)
         assertTrue(GeminiProvider.API_URL.contains("googleapis.com"))
     }
 
     @Test
     fun `provider info data class`() {
-        val info = ProviderInfo("anthropic", "Anthropic (Claude)", "claude-sonnet-4-20250514", true)
+        val info = ProviderInfo("anthropic", "Anthropic (Claude)", "claude-sonnet-4-6", true)
         assertEquals("anthropic", info.type)
         assertEquals("Anthropic (Claude)", info.displayName)
         assertTrue(info.hasKey)

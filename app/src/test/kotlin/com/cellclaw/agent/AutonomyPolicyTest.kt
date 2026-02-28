@@ -24,17 +24,25 @@ class AutonomyPolicyTest {
     }
 
     @Test
-    fun `write operations default to ASK`() {
-        assertEquals(ToolApprovalPolicy.ASK, policy.getPolicy("sms.send"))
-        assertEquals(ToolApprovalPolicy.ASK, policy.getPolicy("phone.call"))
-        assertEquals(ToolApprovalPolicy.ASK, policy.getPolicy("script.exec"))
-        assertEquals(ToolApprovalPolicy.ASK, policy.getPolicy("app.automate"))
-        assertEquals(ToolApprovalPolicy.ASK, policy.getPolicy("file.write"))
+    fun `write operations default to AUTO in FULL_AUTO profile`() {
+        assertEquals(ToolApprovalPolicy.AUTO, policy.getPolicy("sms.send"))
+        assertEquals(ToolApprovalPolicy.AUTO, policy.getPolicy("phone.call"))
+        assertEquals(ToolApprovalPolicy.AUTO, policy.getPolicy("script.exec"))
+        assertEquals(ToolApprovalPolicy.AUTO, policy.getPolicy("app.automate"))
+        assertEquals(ToolApprovalPolicy.AUTO, policy.getPolicy("file.write"))
     }
 
     @Test
-    fun `unknown tools default to ASK`() {
-        assertEquals(ToolApprovalPolicy.ASK, policy.getPolicy("unknown.tool"))
+    fun `unknown tools default to AUTO`() {
+        assertEquals(ToolApprovalPolicy.AUTO, policy.getPolicy("unknown.tool"))
+    }
+
+    @Test
+    fun `balanced profile asks for writes`() {
+        policy.applyProfile(PermissionProfile.BALANCED)
+        assertEquals(ToolApprovalPolicy.ASK, policy.getPolicy("sms.send"))
+        assertEquals(ToolApprovalPolicy.ASK, policy.getPolicy("script.exec"))
+        assertEquals(ToolApprovalPolicy.AUTO, policy.getPolicy("sms.read"))
     }
 
     @Test

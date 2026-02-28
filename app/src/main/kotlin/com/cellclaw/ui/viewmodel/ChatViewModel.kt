@@ -98,6 +98,11 @@ class ChatViewModel @Inject constructor(
                     is AgentEvent.ProviderFailover -> addMessage(
                         "tool", "Switched from ${event.fromProvider} to ${event.toProvider}: ${event.reason}"
                     )
+                    is AgentEvent.ContextCleared -> {
+                        _messages.value = emptyList()
+                        messageCounter = 0L
+                        _thinkingText.value = null
+                    }
                 }
             }
         }

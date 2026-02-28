@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 import javax.inject.Provider
@@ -117,6 +119,10 @@ class AgentLoop @Inject constructor(
     fun clearContext() {
         stop()
         conversationHistory.clear()
+        scope.launch {
+            conversationStore.clearCurrentConversation()
+            _events.emit(AgentEvent.ContextCleared)
+        }
     }
 
     fun pause() {
@@ -340,17 +346,7 @@ class AgentLoop @Inject constructor(
 
     private fun summarizeToolResult(toolName: String, content: String): String {
         return when (toolName) {
-            "screen.read" -> {
-                // Extract package and element_count from the JSON if possible
-                try {
-                    val obj = json.parseToJsonElement(content) as? JsonObject
-                    val pkg = obj?.get("package")?.jsonPrimitive?.content ?: "unknown"
-                    val count = obj?.get("element_count")?.jsonPrimitive?.intOrNull ?: 0
-                    "[screen.read: $pkg, $count elements — pruned to save tokens]"
-                } catch (_: Exception) {
-                    "[screen.read result pruned — ${content.length} chars]"
-                }
-            }
+            "screen.read" -> summarizeScreenRead(content)
             "vision.analyze" -> {
                 // Keep first 200 chars of the analysis as a summary
                 val preview = content.take(200)
@@ -360,6 +356,36 @@ class AgentLoop @Inject constructor(
                 "[screen.capture result pruned]"
             }
             else -> "[tool result pruned — ${content.length} chars]"
+        }
+    }
+
+    /**
+     * Summarize a screen.read result: keep package, element count, and all visible
+     * text/descriptions/clickable labels — but drop the per-element bounds, type,
+     * and boolean flags that the model doesn't need for older screens.
+     */
+    private fun summarizeScreenRead(content: String): String {
+        return try {
+            val obj = json.parseToJsonElement(content).jsonObject
+            val pkg = obj["package"]?.jsonPrimitive?.content ?: "unknown"
+            val count = obj["element_count"]?.jsonPrimitive?.intOrNull ?: 0
+            val elements = obj["elements"]?.jsonArray ?: return "[screen.read: $pkg, $count elements — pruned]"
+
+            // Extract just the text content from each element
+            val texts = mutableListOf<String>()
+            for (el in elements) {
+                val elObj = el.jsonObject
+                val text = elObj["text"]?.jsonPrimitive?.content
+                val desc = elObj["desc"]?.jsonPrimitive?.content
+                val clickable = elObj["clickable"]?.jsonPrimitive?.content == "true"
+                val label = text ?: desc ?: continue
+                if (clickable) texts.add("[${label}]") else texts.add(label)
+            }
+
+            val summary = texts.joinToString(" | ").take(800)
+            "[screen.read summary: $pkg, $count elements] $summary"
+        } catch (_: Exception) {
+            "[screen.read result pruned — ${content.length} chars]"
         }
     }
 
@@ -454,4 +480,5 @@ sealed class AgentEvent {
     data object HeartbeatStart : AgentEvent()
     data class HeartbeatComplete(val detection: HeartbeatDetector.DetectionResult) : AgentEvent()
     data class ProviderFailover(val fromProvider: String, val toProvider: String, val reason: String) : AgentEvent()
+    data object ContextCleared : AgentEvent()
 }
