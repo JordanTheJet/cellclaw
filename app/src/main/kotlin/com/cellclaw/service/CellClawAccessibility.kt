@@ -28,11 +28,12 @@ class CellClawAccessibility : AccessibilityService() {
     private var screenWidth = 1080
     private var screenHeight = 2400
 
-    // Volume hotkey tracking: long-press both volume buttons to activate
-    private var volumeUpDown = false
-    private var volumeDownDown = false
-    private var hotKeyHandler: android.os.Handler? = null
-    private var hotKeyPending: Runnable? = null
+    // System dialog tracking
+    private var lastSystemDialogPackage: String? = null
+    private var lastSystemDialogTime = 0L
+
+    // Double-tap volume down hotkey tracking
+    private var lastVolumeDownTime = 0L
 
     private val actionReceiver = object : BroadcastReceiver() {
         @Suppress("DEPRECATION")
@@ -70,6 +71,9 @@ class CellClawAccessibility : AccessibilityService() {
                     put("package", rootInActiveWindow?.packageName?.toString() ?: "unknown")
                 }
                 "find_element" -> findElement(intent.getStringExtra("text") ?: "")
+                "handle_dialog" -> handleSystemDialog(
+                    intent.getStringExtra("button") ?: "Allow"
+                )
                 "screenshot" -> {
                     handleScreenshot(resultReceiver)
                     return // Result sent asynchronously
@@ -100,7 +104,6 @@ class CellClawAccessibility : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         updateScreenDimensions()
-        hotKeyHandler = android.os.Handler(mainLooper)
 
         val filter = IntentFilter(ACTION_COMMAND)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -115,47 +118,30 @@ class CellClawAccessibility : AccessibilityService() {
         Log.d(TAG, "Accessibility service connected (${screenWidth}x${screenHeight})")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString() ?: return
+            if (pkg in systemDialogPackages) {
+                Log.d(TAG, "System dialog detected from package: $pkg")
+                lastSystemDialogPackage = pkg
+                lastSystemDialogTime = System.currentTimeMillis()
+            }
+        }
+    }
 
     override fun onInterrupt() {}
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        val keyCode = event.keyCode
-        val action = event.action
-
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            when (action) {
-                KeyEvent.ACTION_DOWN -> {
-                    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) volumeUpDown = true
-                    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) volumeDownDown = true
-
-                    if (volumeUpDown && volumeDownDown && hotKeyPending == null) {
-                        // Both buttons held — start 1-second timer
-                        val runnable = Runnable {
-                            hotKeyPending = null
-                            if (volumeUpDown && volumeDownDown) {
-                                Log.d(TAG, "Hotkey activated: both volume buttons held")
-                                triggerVoiceActivation()
-                            }
-                        }
-                        hotKeyPending = runnable
-                        hotKeyHandler?.postDelayed(runnable, HOTKEY_HOLD_MS)
-                    }
-                    // Consume the event so volume doesn't change
-                    return true
-                }
-                KeyEvent.ACTION_UP -> {
-                    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) volumeUpDown = false
-                    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) volumeDownDown = false
-
-                    // Cancel pending hotkey if a button was released too early
-                    hotKeyPending?.let {
-                        hotKeyHandler?.removeCallbacks(it)
-                        hotKeyPending = null
-                    }
-                    return true
-                }
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN && event.action == KeyEvent.ACTION_DOWN) {
+            val now = System.currentTimeMillis()
+            if (now - lastVolumeDownTime < DOUBLE_TAP_MS) {
+                // Double-tap detected — activate voice
+                lastVolumeDownTime = 0L
+                Log.d(TAG, "Hotkey activated: double-tap volume down")
+                triggerVoiceActivation()
+                return true  // Consume second tap
             }
+            lastVolumeDownTime = now
         }
         return super.onKeyEvent(event)
     }
@@ -319,15 +305,82 @@ class CellClawAccessibility : AccessibilityService() {
         val elements = mutableListOf<JsonObject>()
         traverseNode(rootNode, elements)
 
+        val pkg = rootNode.packageName?.toString() ?: "unknown"
+        val dialogInfo = detectSystemDialog(pkg, elements)
+
         return buildJsonObject {
-            put("package", rootNode.packageName?.toString() ?: "unknown")
+            put("package", pkg)
             put("screen_width", screenWidth)
             put("screen_height", screenHeight)
             put("element_count", elements.size)
+            if (dialogInfo != null) {
+                put("system_dialog", true)
+                put("dialog_type", dialogInfo.type)
+                put("dialog_message", dialogInfo.message)
+                putJsonArray("dialog_actions") {
+                    dialogInfo.actions.forEach { add(JsonPrimitive(it)) }
+                }
+            }
             putJsonArray("elements") {
                 elements.forEach { add(it) }
             }
         }
+    }
+
+    // ── System Dialog Detection ─────────────────────────────────────────
+
+    private data class DialogInfo(
+        val type: String,
+        val message: String,
+        val actions: List<String>
+    )
+
+    /** Known system dialog packages. */
+    private val systemDialogPackages = setOf(
+        "com.google.android.permissioncontroller",
+        "com.android.permissioncontroller",
+        "com.android.packageinstaller",
+        "com.google.android.packageinstaller",
+        "android",                               // system alert dialogs
+        "com.android.systemui"                    // e.g. USB debugging prompts
+    )
+
+    /**
+     * Detects if the current foreground window is a system dialog (permission
+     * request, app install prompt, etc.) and extracts its message + button labels.
+     */
+    private fun detectSystemDialog(pkg: String, elements: List<JsonObject>): DialogInfo? {
+        if (pkg !in systemDialogPackages) return null
+
+        // Collect all visible text to form the dialog message
+        val textParts = mutableListOf<String>()
+        val buttonLabels = mutableListOf<String>()
+
+        for (el in elements) {
+            val text = el["text"]?.jsonPrimitive?.contentOrNull
+                ?: el["desc"]?.jsonPrimitive?.contentOrNull
+                ?: continue
+            val isClickable = el["clickable"]?.jsonPrimitive?.booleanOrNull ?: false
+            if (isClickable && text.isNotBlank()) {
+                buttonLabels.add(text)
+            } else if (text.isNotBlank()) {
+                textParts.add(text)
+            }
+        }
+
+        val dialogType = when {
+            textParts.any { it.contains("allow", ignoreCase = true) && it.contains("access", ignoreCase = true) } -> "permission_request"
+            textParts.any { it.contains("permission", ignoreCase = true) } -> "permission_request"
+            textParts.any { it.contains("install", ignoreCase = true) } -> "install_prompt"
+            pkg == "com.android.systemui" -> "system_prompt"
+            else -> "system_dialog"
+        }
+
+        return DialogInfo(
+            type = dialogType,
+            message = textParts.joinToString(" ").take(300),
+            actions = buttonLabels
+        )
     }
 
     private fun traverseNode(node: AccessibilityNodeInfo, elements: MutableList<JsonObject>, depth: Int = 0) {
@@ -395,6 +448,43 @@ class CellClawAccessibility : AccessibilityService() {
                 }
             }
         }
+    }
+
+    // ── Handle System Dialog ────────────────────────────────────────────
+
+    private fun handleSystemDialog(buttonText: String): JsonObject {
+        val rootNode = rootInActiveWindow ?: return errorResult("No active window")
+        val pkg = rootNode.packageName?.toString() ?: "unknown"
+
+        if (pkg !in systemDialogPackages) {
+            return errorResult("No system dialog is currently showing (foreground: $pkg)")
+        }
+
+        // Find the button matching the requested text
+        val nodes = rootNode.findAccessibilityNodeInfosByText(buttonText)
+        if (nodes.isNullOrEmpty()) {
+            // Try common variations
+            val alternatives = when (buttonText.lowercase()) {
+                "allow" -> listOf("Allow", "ALLOW", "While using the app", "Only this time")
+                "deny" -> listOf("Deny", "DENY", "Don't allow", "Don't Allow")
+                else -> listOf(buttonText)
+            }
+            for (alt in alternatives) {
+                val altNodes = rootNode.findAccessibilityNodeInfosByText(alt)
+                if (!altNodes.isNullOrEmpty()) {
+                    val clickable = findClickableParent(altNodes.first()) ?: altNodes.first()
+                    clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    lastSystemDialogPackage = null
+                    return successResult("handle_dialog", "Tapped '$alt' on system dialog")
+                }
+            }
+            return errorResult("Button '$buttonText' not found in system dialog")
+        }
+
+        val clickable = findClickableParent(nodes.first()) ?: nodes.first()
+        clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        lastSystemDialogPackage = null
+        return successResult("handle_dialog", "Tapped '$buttonText' on system dialog")
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -491,6 +581,6 @@ class CellClawAccessibility : AccessibilityService() {
     companion object {
         private const val TAG = "CellClawA11y"
         const val ACTION_COMMAND = "com.cellclaw.ACCESSIBILITY_ACTION"
-        private const val HOTKEY_HOLD_MS = 800L  // Hold both volume buttons for 800ms
+        private const val DOUBLE_TAP_MS = 400L  // Max interval between taps
     }
 }
