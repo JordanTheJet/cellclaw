@@ -1,6 +1,7 @@
 package com.cellclaw.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.cellclaw.agent.AgentLoop
 import com.cellclaw.agent.AutonomyPolicy
 import com.cellclaw.agent.PermissionProfile
 import com.cellclaw.agent.ToolApprovalPolicy
@@ -18,7 +19,8 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val appConfig: AppConfig,
     private val providerManager: ProviderManager,
-    private val autonomyPolicy: AutonomyPolicy
+    private val autonomyPolicy: AutonomyPolicy,
+    private val agentLoop: AgentLoop
 ) : ViewModel() {
 
     private val _permissionProfile = MutableStateFlow(
@@ -142,6 +144,10 @@ class SettingsViewModel @Inject constructor(
         val install = profile == PermissionProfile.FULL_AUTO
         appConfig.autoInstallApps = install
         _autoInstallApps.value = install
+    }
+
+    fun clearContext() {
+        agentLoop.clearContext()
     }
 
     fun togglePolicy(toolName: String) {

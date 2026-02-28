@@ -112,6 +112,11 @@ class AgentLoop @Inject constructor(
         _state.value = AgentState.IDLE
     }
 
+    fun clearContext() {
+        stop()
+        conversationHistory.clear()
+    }
+
     fun pause() {
         _state.value = AgentState.PAUSED
     }

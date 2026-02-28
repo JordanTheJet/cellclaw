@@ -125,6 +125,13 @@ class ChatViewModel @Inject constructor(
         _thinkingText.value = null
     }
 
+    fun clearContext() {
+        agentLoop.clearContext()
+        _thinkingText.value = null
+        _messages.value = emptyList()
+        messageCounter = 0L
+    }
+
     fun respondToApproval(requestId: String, result: ApprovalResult) {
         approvalQueue.respond(requestId, result)
     }

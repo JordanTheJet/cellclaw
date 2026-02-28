@@ -61,12 +61,33 @@ fun GuideScreen(onBack: () -> Unit) {
             )
 
             GuideSection(
+                title = "\uD83D\uDCF1 Top Bar Icons",
+                body = "The icons in the app's top bar from left to right:",
+                items = listOf(
+                    "\u2716 Stop" to "Immediately stop the running agent",
+                    "\u2139 Info" to "Open this guide",
+                    "\u2605 Star" to "View and manage skills",
+                    "\u2699 Settings" to "Open app settings (clear context is here too)"
+                )
+            )
+
+            GuideSection(
+                title = "\uD83D\uDD27 Overlay Panel Icons",
+                body = null,
+                items = listOf(
+                    "\u2139 Info" to "Open the CellClaw guide",
+                    "\u2605 Star" to "Open the full CellClaw app",
+                    "\u2699 Gear" to "Open app settings"
+                )
+            )
+
+            GuideSection(
                 title = "\uD83D\uDC46 Overlay Actions",
                 body = null,
                 items = listOf(
                     "Single Tap" to "Open quick-reply text panel",
                     "Double Tap" to "Open the full CellClaw app",
-                    "Long Press" to "Show stop button to exit overlay",
+                    "Long Press" to "Show stop / hide buttons",
                     "Drag" to "Move the bubble anywhere on screen"
                 )
             )

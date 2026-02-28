@@ -622,6 +622,8 @@ class OverlayService : Service() {
 
     // ── Stop button (long-press) ────────────────────────────────────────
 
+    private var hideButtonView: View? = null
+
     private fun showStopButton() {
         if (stopButtonVisible) return
         // Close panel if open
@@ -645,7 +647,7 @@ class OverlayService : Service() {
         windowManager.addView(backdrop, bdParams)
         stopBackdropView = backdrop
 
-        // Red stop button
+        // Red X button – stop the AI agent
         val btn = TextView(this).apply {
             text = "\u2716"  // ✖ symbol
             setTextColor(Color.WHITE)
@@ -656,7 +658,7 @@ class OverlayService : Service() {
                 setColor(Color.parseColor("#D32F2F"))
             }
             background = bg
-            setOnClickListener { stopEverything() }
+            setOnClickListener { stopAgent() }
         }
         val btnParams = WindowManager.LayoutParams(
             size, size,
@@ -670,12 +672,39 @@ class OverlayService : Service() {
         }
         windowManager.addView(btn, btnParams)
         stopButtonView = btn
+
+        // Eye button – hide overlay only
+        val eyeBtn = TextView(this).apply {
+            text = "\uD83D\uDC41"  // 👁 eye symbol
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#3A3A5E"))
+            }
+            background = bg
+            setOnClickListener { hideOverlay() }
+        }
+        val eyeParams = WindowManager.LayoutParams(
+            size, size,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = bubbleParams.x + dpToPx(56 + 52)
+            y = bubbleParams.y
+        }
+        windowManager.addView(eyeBtn, eyeParams)
+        hideButtonView = eyeBtn
+
         stopButtonVisible = true
 
-        // Auto-dismiss after 3 seconds
+        // Auto-dismiss after 5 seconds
         stopDismissJob?.cancel()
         stopDismissJob = serviceScope?.launch {
-            delay(3000)
+            delay(5000)
             hideStopButton()
         }
     }
@@ -685,10 +714,22 @@ class OverlayService : Service() {
         if (stopButtonVisible) {
             stopButtonView?.let { windowManager.removeView(it) }
             stopBackdropView?.let { windowManager.removeView(it) }
+            hideButtonView?.let { windowManager.removeView(it) }
             stopButtonView = null
             stopBackdropView = null
+            hideButtonView = null
             stopButtonVisible = false
         }
+    }
+
+    private fun stopAgent() {
+        hideStopButton()
+        agentLoop.stop()
+    }
+
+    private fun hideOverlay() {
+        hideStopButton()
+        stopSelf()
     }
 
     private fun stopEverything() {
@@ -764,11 +805,17 @@ class OverlayService : Service() {
             "The floating bubble uses the CellClaw target icon. " +
             "Its background color changes in real-time to reflect the current agent state shown above.")
 
+        // -- Panel icons section --
+        addGuideSection(content, "\uD83D\uDD27 Panel Icons", null)
+        addActionRow(content, "\u2139 Info", "Open this guide")
+        addActionRow(content, "\u2605 Star", "Open the full CellClaw app")
+        addActionRow(content, "\u2699 Gear", "Open app settings")
+
         // -- Overlay actions section --
         addGuideSection(content, "\uD83D\uDC46 Overlay Actions", null)
         addActionRow(content, "Single Tap", "Open quick-reply text panel")
         addActionRow(content, "Double Tap", "Open the full CellClaw app")
-        addActionRow(content, "Long Press", "Show stop button to exit overlay")
+        addActionRow(content, "Long Press", "Show stop / hide buttons")
         addActionRow(content, "Drag", "Move the bubble anywhere on screen")
 
         // Close hint

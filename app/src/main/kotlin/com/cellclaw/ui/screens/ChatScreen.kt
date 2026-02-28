@@ -91,6 +91,9 @@ fun ChatScreen(
                             }
                         }
                     }
+                    IconButton(onClick = { viewModel.stopAgent() }) {
+                        Icon(Icons.Default.Close, "Stop agent")
+                    }
                     IconButton(onClick = onNavigateToGuide) {
                         Icon(Icons.Default.Info, "Guide")
                     }
