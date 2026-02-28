@@ -43,12 +43,12 @@ fun GuideScreen(onBack: () -> Unit) {
             )
 
             GuideSection(
-                title = "\uD83C\uDFA8 Bubble Colors",
+                title = "\uD83C\uDFA8 Overlay Bubble Colors",
                 body = null,
                 items = listOf(
                     "\uD83D\uDFE2 Green" to "Ready & idle",
                     "\uD83D\uDFE0 Orange" to "Thinking or working",
-                    "\uD83D\uDD34 Red" to "Needs your approval",
+                    "\uD83D\uDFE1 Yellow" to "Needs your approval",
                     "\u26AA Grey" to "Paused",
                     "\uD83D\uDFE5 Dark Red" to "Error occurred"
                 )

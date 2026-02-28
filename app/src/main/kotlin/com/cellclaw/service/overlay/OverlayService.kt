@@ -403,13 +403,33 @@ class OverlayService : Service() {
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
         }
 
-        // Icon button row (star, cogs, book)
+        // Icon button row (book, star, cogs)
         val iconRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_HORIZONTAL
         }
         val iconSize = dpToPx(36)
         val iconMargin = dpToPx(8)
+
+        // Book button – show help guide
+        val bookBtn = TextView(this).apply {
+            text = "\u2139" // ℹ
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#3A3A5E"))
+            }
+            background = bg
+            setOnClickListener {
+                togglePanel()
+                showHelpGuide()
+            }
+        }
+        iconRow.addView(bookBtn, LinearLayout.LayoutParams(iconSize, iconSize).apply {
+            marginEnd = iconMargin
+        })
 
         // Star button – open the app
         val starBtn = TextView(this).apply {
@@ -441,26 +461,7 @@ class OverlayService : Service() {
             background = bg
             setOnClickListener { openAppSettings() }
         }
-        iconRow.addView(cogsBtn, LinearLayout.LayoutParams(iconSize, iconSize).apply {
-            marginEnd = iconMargin
-        })
-
-        // Book button – show help guide
-        val bookBtn = TextView(this).apply {
-            text = "\uD83D\uDCD6" // 📖
-            textSize = 16f
-            gravity = Gravity.CENTER
-            val bg = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#3A3A5E"))
-            }
-            background = bg
-            setOnClickListener {
-                togglePanel()
-                showHelpGuide()
-            }
-        }
-        iconRow.addView(bookBtn, LinearLayout.LayoutParams(iconSize, iconSize))
+        iconRow.addView(cogsBtn, LinearLayout.LayoutParams(iconSize, iconSize))
 
         panel.addView(iconRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -747,10 +748,10 @@ class OverlayService : Service() {
             "A 3-second cooldown prevents accidental re-triggers.")
 
         // -- Color system section --
-        addGuideSection(content, "\uD83C\uDFA8 Bubble Colors", null)
+        addGuideSection(content, "\uD83C\uDFA8 Overlay Bubble Colors", null)
         addColorRow(content, "#4CAF50", "Green", "Ready & idle")
         addColorRow(content, "#FF9800", "Orange", "Thinking or working")
-        addColorRow(content, "#F44336", "Red", "Needs your approval")
+        addColorRow(content, "#FFC107", "Yellow", "Needs your approval")
         addColorRow(content, "#9E9E9E", "Grey", "Paused")
         addColorRow(content, "#B00020", "Dark Red", "Error occurred")
 
@@ -1057,7 +1058,7 @@ class OverlayService : Service() {
                     AgentState.IDLE -> Color.parseColor("#4CAF50")
                     AgentState.THINKING -> Color.parseColor("#FF9800")
                     AgentState.EXECUTING_TOOLS -> Color.parseColor("#FF9800")
-                    AgentState.WAITING_APPROVAL -> Color.parseColor("#F44336")
+                    AgentState.WAITING_APPROVAL -> Color.parseColor("#FFC107")
                     AgentState.PAUSED -> Color.parseColor("#9E9E9E")
                     AgentState.ERROR -> Color.parseColor("#B00020")
                 }
