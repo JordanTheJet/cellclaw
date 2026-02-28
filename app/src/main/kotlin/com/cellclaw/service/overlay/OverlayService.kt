@@ -33,6 +33,8 @@ import com.cellclaw.tools.ScreenCaptureTool
 import com.cellclaw.tools.VisionAnalyzeTool
 import com.cellclaw.voice.ListeningPhase
 import com.cellclaw.voice.VoiceListeningState
+import android.net.Uri
+import android.provider.Settings
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.util.Log
@@ -96,6 +98,12 @@ class OverlayService : Service() {
     private var voiceOverlayVisible = false
     private var micPulseAnimator: ObjectAnimator? = null
 
+    // Help guide overlay
+    private var helpGuideCard: ScrollView? = null
+    private var helpGuideBackdrop: View? = null
+    private lateinit var helpGuideParams: WindowManager.LayoutParams
+    private var helpGuideVisible = false
+
     // Panel child views for dynamic updates
     private var approveBtn: TextView? = null
     private var denyBtn: TextView? = null
@@ -111,6 +119,7 @@ class OverlayService : Service() {
         createResponseCard()
         createPanel()
         createVoiceOverlay()
+        createHelpGuide()
         observeState()
         observeVisibility()
         observeVoiceListeningState()
@@ -125,6 +134,7 @@ class OverlayService : Service() {
         backdropView?.let { if (panelVisible) windowManager.removeView(it) }
         statusView?.let { if (statusVisible) windowManager.removeView(it) }
         responseCard?.let { if (responseVisible) windowManager.removeView(it) }
+        hideHelpGuide()
         hideVoiceOverlay()
         bubbleView = null
         panelView = null
@@ -156,6 +166,10 @@ class OverlayService : Service() {
             if (panelVisible) panelView?.visibility = View.INVISIBLE
             if (panelVisible) backdropView?.visibility = View.INVISIBLE
             if (responseVisible) responseCard?.visibility = View.INVISIBLE
+            if (helpGuideVisible) {
+                helpGuideCard?.visibility = View.INVISIBLE
+                helpGuideBackdrop?.visibility = View.INVISIBLE
+            }
             if (voiceOverlayVisible) voiceOverlay?.visibility = View.INVISIBLE
             if (stopButtonVisible) {
                 stopButtonView?.visibility = View.INVISIBLE
@@ -176,6 +190,10 @@ class OverlayService : Service() {
             if (panelVisible) panelView?.visibility = View.VISIBLE
             if (panelVisible) backdropView?.visibility = View.VISIBLE
             if (responseVisible) responseCard?.visibility = View.VISIBLE
+            if (helpGuideVisible) {
+                helpGuideCard?.visibility = View.VISIBLE
+                helpGuideBackdrop?.visibility = View.VISIBLE
+            }
             if (voiceOverlayVisible) voiceOverlay?.visibility = View.VISIBLE
             if (stopButtonVisible) {
                 stopButtonView?.visibility = View.VISIBLE
@@ -384,6 +402,70 @@ class OverlayService : Service() {
             background = bg
             setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
         }
+
+        // Icon button row (star, cogs, book)
+        val iconRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        val iconSize = dpToPx(36)
+        val iconMargin = dpToPx(8)
+
+        // Star button – open the app
+        val starBtn = TextView(this).apply {
+            text = "\u2605" // ★
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#3A3A5E"))
+            }
+            background = bg
+            setOnClickListener { openApp() }
+        }
+        iconRow.addView(starBtn, LinearLayout.LayoutParams(iconSize, iconSize).apply {
+            marginEnd = iconMargin
+        })
+
+        // Cogs button – open app settings
+        val cogsBtn = TextView(this).apply {
+            text = "\u2699" // ⚙
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#3A3A5E"))
+            }
+            background = bg
+            setOnClickListener { openAppSettings() }
+        }
+        iconRow.addView(cogsBtn, LinearLayout.LayoutParams(iconSize, iconSize).apply {
+            marginEnd = iconMargin
+        })
+
+        // Book button – show help guide
+        val bookBtn = TextView(this).apply {
+            text = "\uD83D\uDCD6" // 📖
+            textSize = 16f
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#3A3A5E"))
+            }
+            background = bg
+            setOnClickListener {
+                togglePanel()
+                showHelpGuide()
+            }
+        }
+        iconRow.addView(bookBtn, LinearLayout.LayoutParams(iconSize, iconSize))
+
+        panel.addView(iconRow, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
 
         // Quick Ask row (input + send button)
         val askRow = LinearLayout(this).apply {
@@ -619,6 +701,208 @@ class OverlayService : Service() {
         stopSelf()
     }
 
+    private fun openAppSettings() {
+        if (panelVisible) togglePanel()
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(intent)
+    }
+
+    // ── Help guide overlay ─────────────────────────────────────────────
+
+    private fun createHelpGuide() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#F01E1E2E"))
+                cornerRadius = dpToPx(16).toFloat()
+            }
+            background = bg
+            setPadding(dpToPx(18), dpToPx(14), dpToPx(18), dpToPx(14))
+        }
+
+        // Title
+        content.addView(TextView(this).apply {
+            text = "CellClaw Guide"
+            setTextColor(Color.parseColor("#BB86FC"))
+            textSize = 16f
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        // Divider
+        content.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#3A3A5E"))
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(1)
+        ).apply { topMargin = dpToPx(8); bottomMargin = dpToPx(10) })
+
+        // -- Shake shortcut section --
+        addGuideSection(content, "\u26A1 Shake Shortcut",
+            "Shake your phone 3 times quickly (within 1.5s) to activate voice commands. " +
+            "A 3-second cooldown prevents accidental re-triggers.")
+
+        // -- Color system section --
+        addGuideSection(content, "\uD83C\uDFA8 Bubble Colors", null)
+        addColorRow(content, "#4CAF50", "Green", "Ready & idle")
+        addColorRow(content, "#FF9800", "Orange", "Thinking or working")
+        addColorRow(content, "#F44336", "Red", "Needs your approval")
+        addColorRow(content, "#9E9E9E", "Grey", "Paused")
+        addColorRow(content, "#B00020", "Dark Red", "Error occurred")
+
+        // Spacing
+        content.addView(View(this), LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(6)))
+
+        // -- Logo section --
+        addGuideSection(content, "\uD83D\uDD35 Logo",
+            "The floating bubble uses the CellClaw target icon. " +
+            "Its background color changes in real-time to reflect the current agent state shown above.")
+
+        // -- Overlay actions section --
+        addGuideSection(content, "\uD83D\uDC46 Overlay Actions", null)
+        addActionRow(content, "Single Tap", "Open quick-reply text panel")
+        addActionRow(content, "Double Tap", "Open the full CellClaw app")
+        addActionRow(content, "Long Press", "Show stop button to exit overlay")
+        addActionRow(content, "Drag", "Move the bubble anywhere on screen")
+
+        // Close hint
+        content.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#3A3A5E"))
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(1)
+        ).apply { topMargin = dpToPx(10); bottomMargin = dpToPx(6) })
+
+        content.addView(TextView(this).apply {
+            text = "Tap anywhere outside to close"
+            setTextColor(Color.parseColor("#888888"))
+            textSize = 11f
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        val scroll = ScrollView(this).apply {
+            addView(content)
+        }
+
+        helpGuideParams = WindowManager.LayoutParams(
+            dpToPx(280),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        helpGuideCard = scroll
+    }
+
+    private fun addGuideSection(parent: LinearLayout, title: String, body: String?) {
+        parent.addView(TextView(this).apply {
+            text = title
+            setTextColor(Color.WHITE)
+            textSize = 14f
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dpToPx(4) })
+
+        if (body != null) {
+            parent.addView(TextView(this).apply {
+                text = body
+                setTextColor(Color.parseColor("#CCCCCC"))
+                textSize = 12f
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dpToPx(2) })
+        }
+    }
+
+    private fun addColorRow(parent: LinearLayout, hexColor: String, label: String, desc: String) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        // Color dot
+        val dot = View(this).apply {
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor(hexColor))
+            }
+            background = bg
+        }
+        row.addView(dot, LinearLayout.LayoutParams(dpToPx(12), dpToPx(12)).apply {
+            marginEnd = dpToPx(8)
+        })
+
+        // Label + description
+        row.addView(TextView(this).apply {
+            text = "$label — $desc"
+            setTextColor(Color.parseColor("#CCCCCC"))
+            textSize = 12f
+        })
+
+        parent.addView(row, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dpToPx(3); marginStart = dpToPx(8) })
+    }
+
+    private fun addActionRow(parent: LinearLayout, action: String, desc: String) {
+        parent.addView(TextView(this).apply {
+            text = "\u2022 $action: $desc"
+            setTextColor(Color.parseColor("#CCCCCC"))
+            textSize = 12f
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dpToPx(3); marginStart = dpToPx(8) })
+    }
+
+    private fun showHelpGuide() {
+        if (helpGuideVisible) return
+
+        // Backdrop to dismiss
+        val backdrop = View(this).apply {
+            setBackgroundColor(Color.parseColor("#80000000"))
+            setOnClickListener { hideHelpGuide() }
+        }
+        val bdParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+        windowManager.addView(backdrop, bdParams)
+        helpGuideBackdrop = backdrop
+
+        helpGuideCard?.let { windowManager.addView(it, helpGuideParams) }
+        helpGuideVisible = true
+
+        if (overlayHidden) {
+            helpGuideCard?.visibility = View.INVISIBLE
+            helpGuideBackdrop?.visibility = View.INVISIBLE
+        }
+    }
+
+    private fun hideHelpGuide() {
+        if (helpGuideVisible) {
+            helpGuideCard?.let { windowManager.removeView(it) }
+            helpGuideBackdrop?.let { windowManager.removeView(it) }
+            helpGuideBackdrop = null
+            helpGuideVisible = false
+        }
+    }
 
     // ── Voice listening overlay ────────────────────────────────────────────
 
