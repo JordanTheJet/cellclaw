@@ -45,6 +45,7 @@ fun ChatScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToSkills: () -> Unit,
     onNavigateToApprovals: () -> Unit,
+    onNavigateToGuide: () -> Unit = {},
     initialMessage: String? = null,
     viewModel: ChatViewModel = hiltViewModel()
 ) {
@@ -89,6 +90,9 @@ fun ChatScreen(
                                 Icon(Icons.Default.Notifications, "Approvals")
                             }
                         }
+                    }
+                    IconButton(onClick = onNavigateToGuide) {
+                        Icon(Icons.Default.Info, "Guide")
                     }
                     IconButton(onClick = onNavigateToSkills) {
                         Icon(Icons.Default.Star, "Skills")

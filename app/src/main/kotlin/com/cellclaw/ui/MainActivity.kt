@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity() {
                             ChatScreen(
                                 onNavigateToSettings = { navController.navigate("settings") },
                                 onNavigateToSkills = { navController.navigate("skills") },
+                                onNavigateToGuide = { navController.navigate("guide") },
                                 onNavigateToApprovals = { navController.navigate("approvals") },
                                 initialMessage = pendingMessage
                             )
@@ -96,6 +97,9 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("approvals") {
                             ApprovalScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("guide") {
+                            GuideScreen(onBack = { navController.popBackStack() })
                         }
                     }
                 }
