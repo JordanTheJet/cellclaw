@@ -293,14 +293,12 @@ class OverlayService : Service() {
         val scroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(120) // max height
+                dpToPx(200) // max height
             )
         }
         val tv = TextView(this).apply {
             setTextColor(Color.WHITE)
             textSize = 13f
-            maxLines = 8
-            ellipsize = TextUtils.TruncateAt.END
         }
         scroll.addView(tv)
         card.addView(scroll, LinearLayout.LayoutParams(
@@ -615,7 +613,7 @@ class OverlayService : Service() {
                 // Tint bubble based on state
                 val color = when (state) {
                     AgentState.IDLE -> Color.parseColor("#4CAF50")
-                    AgentState.THINKING -> Color.parseColor("#2196F3")
+                    AgentState.THINKING -> Color.parseColor("#FF9800")
                     AgentState.EXECUTING_TOOLS -> Color.parseColor("#FF9800")
                     AgentState.WAITING_APPROVAL -> Color.parseColor("#F44336")
                     AgentState.PAUSED -> Color.parseColor("#9E9E9E")
@@ -646,7 +644,10 @@ class OverlayService : Service() {
                 Log.d(TAG, "Event: $event")
                 fadeJob?.cancel()
                 when (event) {
-                    is AgentEvent.ThinkingText -> showStatus("Thinking\u2026")
+                    is AgentEvent.ThinkingText -> {
+                        showStatus("Thinking\u2026")
+                        showResponse(event.text)
+                    }
                     is AgentEvent.ToolCallStart -> showStatus("Calling ${event.name}\u2026")
                     is AgentEvent.ToolCallResult -> {
                         showStatus("Done: ${event.name}")

@@ -81,7 +81,7 @@ class BubbleTouchListener(
 
     companion object {
         private const val DRAG_THRESHOLD = 10f
-        private const val DOUBLE_TAP_TIMEOUT = 300L
+        private const val DOUBLE_TAP_TIMEOUT = 200L
         private const val LONG_PRESS_TIMEOUT = 500L
     }
 }
