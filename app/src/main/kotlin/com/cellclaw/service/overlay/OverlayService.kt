@@ -582,18 +582,12 @@ class OverlayService : Service() {
         windowManager.addView(backdrop, bdParams)
         stopBackdropView = backdrop
 
-        // Red X button – stop the AI agent
+        // Stop sign button – stop everything
         val btn = TextView(this).apply {
-            text = "\u2716"  // ✖ symbol
-            setTextColor(Color.WHITE)
-            textSize = 20f
+            text = "\uD83D\uDED1"  // 🛑 stop sign
+            textSize = 26f
             gravity = Gravity.CENTER
-            val bg = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#D32F2F"))
-            }
-            background = bg
-            setOnClickListener { stopAgent() }
+            setOnClickListener { stopEverything() }
         }
         val btnParams = WindowManager.LayoutParams(
             size, size,

@@ -18,6 +18,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
@@ -140,7 +142,7 @@ class AgentLoop @Inject constructor(
 
             val request = CompletionRequest(
                 systemPrompt = identity.buildSystemPrompt(toolRegistry),
-                messages = conversationHistory.toList(),
+                messages = pruneToolResults(conversationHistory),
                 tools = toolRegistry.toApiSchema(),
                 maxTokens = 4096
             )
@@ -276,6 +278,92 @@ class AgentLoop @Inject constructor(
     }
 
     /**
+     * Prune bulky tool results (screen.read, vision.analyze) from older messages
+     * to reduce input tokens. Keeps the last [KEEP_FULL_RESULTS] full results and
+     * replaces older ones with a short summary.
+     */
+    private fun pruneToolResults(history: List<Message>): List<Message> {
+        // Find indices of USER messages that contain screen.read / vision.analyze results
+        // by checking for ToolResult blocks with large content that look like screen data.
+        val bulkyTools = setOf("screen.read", "screen.capture", "vision.analyze")
+
+        // First pass: find which messages contain bulky tool results by matching
+        // ToolResult blocks to preceding ToolUse blocks in assistant messages.
+        data class BulkyLocation(val msgIndex: Int, val blockIndex: Int)
+        val bulkyLocations = mutableListOf<BulkyLocation>()
+
+        // Collect tool names from assistant ToolUse calls so we can map ToolResult IDs
+        val toolIdToName = mutableMapOf<String, String>()
+        for (msg in history) {
+            if (msg.role == Role.ASSISTANT) {
+                for (block in msg.content) {
+                    if (block is ContentBlock.ToolUse && block.name in bulkyTools) {
+                        toolIdToName[block.id] = block.name
+                    }
+                }
+            }
+        }
+
+        // Find all ToolResult blocks that correspond to bulky tools
+        for ((msgIndex, msg) in history.withIndex()) {
+            if (msg.role != Role.USER) continue
+            for ((blockIndex, block) in msg.content.withIndex()) {
+                if (block is ContentBlock.ToolResult && block.toolUseId in toolIdToName) {
+                    bulkyLocations.add(BulkyLocation(msgIndex, blockIndex))
+                }
+            }
+        }
+
+        // Keep the last KEEP_FULL_RESULTS; summarize everything older
+        if (bulkyLocations.size <= KEEP_FULL_RESULTS) return history
+
+        val toSummarize = bulkyLocations.dropLast(KEEP_FULL_RESULTS).toSet()
+        val summarizeByMsg = toSummarize.groupBy({ it.msgIndex }, { it.blockIndex })
+
+        return history.mapIndexed { msgIndex, msg ->
+            val blocksToSummarize = summarizeByMsg[msgIndex] ?: return@mapIndexed msg
+            val newContent = msg.content.mapIndexed { blockIndex, block ->
+                if (blockIndex in blocksToSummarize && block is ContentBlock.ToolResult) {
+                    val toolName = toolIdToName[block.toolUseId] ?: "tool"
+                    ContentBlock.ToolResult(
+                        toolUseId = block.toolUseId,
+                        content = summarizeToolResult(toolName, block.content),
+                        isError = block.isError
+                    )
+                } else {
+                    block
+                }
+            }
+            Message(msg.role, newContent)
+        }
+    }
+
+    private fun summarizeToolResult(toolName: String, content: String): String {
+        return when (toolName) {
+            "screen.read" -> {
+                // Extract package and element_count from the JSON if possible
+                try {
+                    val obj = json.parseToJsonElement(content) as? JsonObject
+                    val pkg = obj?.get("package")?.jsonPrimitive?.content ?: "unknown"
+                    val count = obj?.get("element_count")?.jsonPrimitive?.intOrNull ?: 0
+                    "[screen.read: $pkg, $count elements — pruned to save tokens]"
+                } catch (_: Exception) {
+                    "[screen.read result pruned — ${content.length} chars]"
+                }
+            }
+            "vision.analyze" -> {
+                // Keep first 200 chars of the analysis as a summary
+                val preview = content.take(200)
+                if (content.length > 200) "$preview... [pruned]" else content
+            }
+            "screen.capture" -> {
+                "[screen.capture result pruned]"
+            }
+            else -> "[tool result pruned — ${content.length} chars]"
+        }
+    }
+
+    /**
      * Remove the last heartbeat prompt + response pair from conversation history.
      * This mirrors OpenClaw's transcript pruning for HEARTBEAT_OK responses.
      */
@@ -346,6 +434,8 @@ class AgentLoop @Inject constructor(
 
     companion object {
         private const val TAG = "AgentLoop"
+        /** Number of recent screen.read/vision.analyze results to keep in full. */
+        private const val KEEP_FULL_RESULTS = 2
     }
 }
 

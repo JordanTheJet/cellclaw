@@ -1,5 +1,7 @@
 package com.cellclaw.ui.viewmodel
 
+import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cellclaw.agent.AgentEvent
@@ -12,9 +14,11 @@ import com.cellclaw.approval.ApprovalResult
 import com.cellclaw.config.AppConfig
 import com.cellclaw.config.SecureKeyStore
 import com.cellclaw.provider.AnthropicProvider
+import com.cellclaw.service.CellClawService
 import com.cellclaw.ui.screens.ChatMessage
 import com.cellclaw.voice.VoiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +27,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val agentLoop: AgentLoop,
     private val approvalQueue: ApprovalQueue,
     private val appConfig: AppConfig,
@@ -123,6 +128,16 @@ class ChatViewModel @Inject constructor(
     fun stopAgent() {
         agentLoop.stop()
         _thinkingText.value = null
+    }
+
+    fun stopEverything() {
+        agentLoop.stop()
+        _thinkingText.value = null
+        context.startService(
+            Intent(context, CellClawService::class.java).apply {
+                action = CellClawService.ACTION_STOP
+            }
+        )
     }
 
     fun clearContext() {

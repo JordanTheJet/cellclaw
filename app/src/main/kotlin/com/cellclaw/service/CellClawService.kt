@@ -58,6 +58,7 @@ class CellClawService : Service() {
                 serviceScope = null
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+                return START_NOT_STICKY // Don't let Android restart after intentional stop
             }
             ACTION_PAUSE -> {
                 agentLoop.pause()

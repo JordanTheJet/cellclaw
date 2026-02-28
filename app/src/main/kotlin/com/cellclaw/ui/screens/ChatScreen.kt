@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cellclaw.approval.ApprovalResult
 import com.cellclaw.ui.components.isAccessibilityEnabled
@@ -91,8 +92,8 @@ fun ChatScreen(
                             }
                         }
                     }
-                    IconButton(onClick = { viewModel.stopAgent() }) {
-                        Icon(Icons.Default.Close, "Stop agent")
+                    IconButton(onClick = { viewModel.stopEverything() }) {
+                        Text("\uD83D\uDED1", fontSize = 20.sp) // 🛑 stop sign
                     }
                     IconButton(onClick = onNavigateToGuide) {
                         Icon(Icons.Default.Info, "Guide")
