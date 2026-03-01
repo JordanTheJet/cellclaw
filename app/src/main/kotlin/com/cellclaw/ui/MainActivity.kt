@@ -68,6 +68,11 @@ class MainActivity : ComponentActivity() {
                                 onComplete = {
                                     appConfig.isSetupComplete = true
                                     startService()
+                                    // Start overlay if enabled and permission granted
+                                    if (appConfig.overlayEnabled && Settings.canDrawOverlays(this@MainActivity)) {
+                                        startForegroundService(Intent(this@MainActivity, OverlayService::class.java))
+                                    }
+                                    voiceActivationHandler.register()
                                     navController.navigate("chat") {
                                         popUpTo("setup") { inclusive = true }
                                     }
