@@ -93,7 +93,13 @@ class MainActivity : ComponentActivity() {
                             AppAccessScreen(onBack = { navController.popBackStack() })
                         }
                         composable("skills") {
-                            SkillsScreen(onBack = { navController.popBackStack() })
+                            SkillsScreen(
+                                onBack = { navController.popBackStack() },
+                                onNavigateToStore = { navController.navigate("skill_store") }
+                            )
+                        }
+                        composable("skill_store") {
+                            SkillStoreScreen(onBack = { navController.popBackStack() })
                         }
                         composable("approvals") {
                             ApprovalScreen(onBack = { navController.popBackStack() })

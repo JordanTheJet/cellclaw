@@ -7,18 +7,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cellclaw.skills.Skill
+import com.cellclaw.skills.SkillSource
 import com.cellclaw.ui.viewmodel.SkillsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SkillsScreen(
     onBack: () -> Unit,
+    onNavigateToStore: () -> Unit,
     viewModel: SkillsViewModel = hiltViewModel()
 ) {
     val skills by viewModel.skills.collectAsState()
@@ -27,13 +31,16 @@ fun SkillsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Skills") },
+                title = { Text("My Skills") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToStore) {
+                        Icon(Icons.Default.Store, "Skill Store")
+                    }
                     IconButton(onClick = { showAddDialog = true }) {
                         Icon(Icons.Default.Add, "Add Skill")
                     }
@@ -46,9 +53,9 @@ fun SkillsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                contentAlignment = androidx.compose.ui.Alignment.Center
+                contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "No skills configured",
                         style = MaterialTheme.typography.bodyLarge,
@@ -60,6 +67,12 @@ fun SkillsScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline
                     )
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedButton(onClick = onNavigateToStore) {
+                        Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Browse Skill Store")
+                    }
                 }
             }
         } else {
@@ -97,11 +110,33 @@ private fun SkillCard(skill: Skill, onDelete: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(skill.name, style = MaterialTheme.typography.titleMedium)
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(skill.name, style = MaterialTheme.typography.titleMedium)
+                    SourceBadge(skill.source)
+                    if (skill.category.isNotBlank()) {
+                        SuggestionChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    skill.category.replaceFirstChar { it.uppercase() },
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        )
+                    }
+                }
+                // Only show delete for non-bundled skills
+                if (skill.source != SkillSource.BUNDLED) {
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
             Text(skill.description, style = MaterialTheme.typography.bodyMedium)
@@ -113,6 +148,14 @@ private fun SkillCard(skill: Skill, onDelete: () -> Unit) {
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+            if (skill.apps.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Apps: ${skill.apps.joinToString(", ")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
             if (skill.steps.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 skill.steps.forEachIndexed { i, step ->
@@ -120,6 +163,26 @@ private fun SkillCard(skill: Skill, onDelete: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SourceBadge(source: SkillSource) {
+    val (label, color) = when (source) {
+        SkillSource.BUNDLED -> "Built-in" to MaterialTheme.colorScheme.tertiary
+        SkillSource.COMMUNITY -> "Community" to MaterialTheme.colorScheme.primary
+        SkillSource.USER_CREATED -> "Custom" to MaterialTheme.colorScheme.secondary
+    }
+    Surface(
+        color = color.copy(alpha = 0.12f),
+        shape = MaterialTheme.shapes.small
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = color
+        )
     }
 }
 

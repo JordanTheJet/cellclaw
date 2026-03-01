@@ -3,6 +3,7 @@ package com.cellclaw.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import com.cellclaw.skills.Skill
 import com.cellclaw.skills.SkillRegistry
+import com.cellclaw.skills.SkillSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -24,7 +25,8 @@ class SkillsViewModel @Inject constructor(
             name = name,
             description = description,
             trigger = trigger,
-            steps = steps
+            steps = steps,
+            source = SkillSource.USER_CREATED
         )
         skillRegistry.addSkill(skill)
     }

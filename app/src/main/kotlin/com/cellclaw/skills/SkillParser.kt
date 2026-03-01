@@ -3,12 +3,17 @@ package com.cellclaw.skills
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class SkillSource { BUNDLED, USER_CREATED, COMMUNITY }
+
 data class Skill(
     val name: String,
     val description: String,
     val trigger: String,
     val steps: List<String>,
-    val tools: List<String> = emptyList()
+    val tools: List<String> = emptyList(),
+    val category: String = "",
+    val apps: List<String> = emptyList(),
+    val source: SkillSource = SkillSource.BUNDLED
 )
 
 @Singleton
@@ -43,6 +48,8 @@ class SkillParser @Inject constructor() {
         var trigger = ""
         val steps = mutableListOf<String>()
         val tools = mutableListOf<String>()
+        var category = ""
+        val apps = mutableListOf<String>()
 
         var section = "header"
 
@@ -54,13 +61,16 @@ class SkillParser @Inject constructor() {
                     name = trimmed.removePrefix("# ").trim()
                     section = "description"
                 }
-                trimmed == "## Trigger" || trimmed == "## trigger" -> section = "trigger"
-                trimmed == "## Steps" || trimmed == "## steps" -> section = "steps"
-                trimmed == "## Tools" || trimmed == "## tools" -> section = "tools"
+                trimmed.equals("## Trigger", ignoreCase = true) -> section = "trigger"
+                trimmed.equals("## Steps", ignoreCase = true) -> section = "steps"
+                trimmed.equals("## Tools", ignoreCase = true) -> section = "tools"
+                trimmed.equals("## Category", ignoreCase = true) -> section = "category"
+                trimmed.equals("## Apps", ignoreCase = true) -> section = "apps"
                 trimmed.startsWith("## ") -> section = "other"
                 trimmed.isNotEmpty() -> when (section) {
                     "description" -> description.appendLine(trimmed)
                     "trigger" -> trigger = trimmed
+                    "category" -> category = trimmed
                     "steps" -> {
                         val step = trimmed.removePrefix("- ").let {
                             if (it.matches(Regex("^\\d+\\.\\s.*"))) it.replaceFirst(Regex("^\\d+\\.\\s"), "")
@@ -71,6 +81,10 @@ class SkillParser @Inject constructor() {
                     "tools" -> {
                         val tool = trimmed.removePrefix("- ").removePrefix("* ").trim()
                         if (tool.isNotBlank()) tools.add(tool)
+                    }
+                    "apps" -> {
+                        val app = trimmed.removePrefix("- ").removePrefix("* ").trim()
+                        if (app.isNotBlank()) apps.add(app)
                     }
                 }
             }
@@ -83,7 +97,9 @@ class SkillParser @Inject constructor() {
             description = description.toString().trim(),
             trigger = trigger,
             steps = steps,
-            tools = tools
+            tools = tools,
+            category = category,
+            apps = apps
         )
     }
 }

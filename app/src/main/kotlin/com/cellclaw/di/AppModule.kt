@@ -93,7 +93,8 @@ object AppModule {
         messagingRead: MessagingReadTool,
         messagingReply: MessagingReplyTool,
         heartbeatContext: HeartbeatContextTool,
-        appInstall: AppInstallTool
+        appInstall: AppInstallTool,
+        skillRead: SkillReadTool
     ): ToolRegistry {
         return ToolRegistry().apply {
             register(
@@ -117,7 +118,8 @@ object AppModule {
                 schedulerTool,
                 messagingOpen, messagingRead, messagingReply,
                 heartbeatContext,
-                appInstall
+                appInstall,
+                skillRead
             )
         }
     }

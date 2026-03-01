@@ -1,6 +1,7 @@
 package com.cellclaw.config
 
 import com.cellclaw.memory.SemanticMemory
+import com.cellclaw.skills.SkillRegistry
 import com.cellclaw.tools.ToolRegistry
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -8,7 +9,8 @@ import javax.inject.Singleton
 @Singleton
 class Identity @Inject constructor(
     private val appConfig: AppConfig,
-    private val semanticMemory: SemanticMemory
+    private val semanticMemory: SemanticMemory,
+    private val skillRegistry: SkillRegistry
 ) {
     fun buildSystemPrompt(toolRegistry: ToolRegistry): String {
         return buildString {
@@ -28,6 +30,12 @@ class Identity @Inject constructor(
             appendLine("\n## Available Tools")
             for (tool in toolRegistry.all()) {
                 appendLine("- **${tool.name}**: ${tool.description}")
+            }
+
+            // Inject skills compact manifest after tools
+            val skillsPrompt = skillRegistry.buildSkillsPrompt()
+            if (skillsPrompt.isNotBlank()) {
+                appendLine(skillsPrompt)
             }
 
             appendLine("\n## Tool Use Guidelines")
