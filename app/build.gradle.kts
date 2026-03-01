@@ -30,12 +30,22 @@ android {
             "\"${localProperties.getProperty("GEMINI_API_KEY", "")}\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file(localProperties.getProperty("RELEASE_STORE_FILE", ""))
+            storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD", "")
+            keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS", "")
+            keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD", "")
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".dev"
             resValue("string", "app_name", "CellClaw Dev")
         }
         release {
+            signingConfig = signingConfigs.getByName("release")
             resValue("string", "app_name", "CellClaw")
             isMinifyEnabled = true
             proguardFiles(
