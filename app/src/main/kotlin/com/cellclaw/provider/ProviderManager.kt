@@ -115,7 +115,7 @@ class ProviderManager @Inject constructor(
         ProviderInfo("openai", "OpenAI (GPT)", "gpt-5.2",
             secureKeyStore.hasApiKey("openai"),
             models = listOf("gpt-5.2", "gpt-5.2-chat-latest", "gpt-5-mini", "gpt-4.1", "gpt-4.1-mini")),
-        ProviderInfo("gemini", "Google (Gemini)", "gemini-3-flash-preview",
+        ProviderInfo("gemini", "Google (Gemini)", "gemini-2.0-flash-lite",
             secureKeyStore.hasApiKey("gemini"),
             models = listOf("gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite")),
         ProviderInfo("openrouter", "OpenRouter", "google/gemini-2.5-flash",
