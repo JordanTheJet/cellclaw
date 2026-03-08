@@ -339,6 +339,6 @@ class GeminiProvider @Inject constructor() : Provider {
     companion object {
         private const val TAG = "GeminiProvider"
         const val API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-        const val DEFAULT_MODEL = "gemini-2.0-flash-lite"
+        const val DEFAULT_MODEL = "gemini-3-flash-preview"
     }
 }
